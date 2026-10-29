@@ -1,0 +1,8 @@
+{
+  "source_id": "CONFIG-CFG-105",
+  "config_id": "CFG-105",
+  "synthetic": true,
+  "sensor_id": "S-101",
+  "spec_id": "SPEC-DETECTION-V1",
+  "detection_threshold": 0.7
+}

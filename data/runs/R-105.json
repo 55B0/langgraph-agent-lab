@@ -1,0 +1,16 @@
+{
+  "source_id": "RUN-R-105",
+  "run_id": "R-105",
+  "synthetic": true,
+  "sensor_id": "S-101",
+  "firmware_version": "fictional-1.0.0",
+  "test_id": "object-detection-steady-signal",
+  "config_id": "CFG-105",
+  "spec_id": "SPEC-DETECTION-V1",
+  "observation": {
+    "signal": 0.55,
+    "expected_detection": true,
+    "actual_detection": false
+  },
+  "outcome": "failed"
+}

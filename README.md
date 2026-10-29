@@ -2,7 +2,23 @@
 
 Learning LangGraph by building **SensorAssist**, an agent that investigates fictional sensor software test failures.
 
-**Status:** planning and documentation. The application, tools, tests, and agent described below are planned; implementation has not started.
+**Status:** Section 1 is implemented: local setup, synthetic evidence, a deterministic data inspector, and fixture checks. LangGraph orchestration, model-selected tools, and persistence are planned.
+
+## Run Section 1
+
+Use Python 3.11 and run these PowerShell commands from the repository root:
+
+```powershell
+py -3.11 -m venv .venv
+& .\.venv\Scripts\python.exe -m pip install -r requirements.lock
+& .\.venv\Scripts\python.exe -m pip install --no-deps -e .
+& .\.venv\Scripts\python.exe -m sensorassist
+& .\.venv\Scripts\python.exe -m pytest -q
+```
+
+The lock file records the resolved development dependencies from the verified Windows/Python 3.11 environment. To resolve dependencies again instead, install with `pip install -e '.[dev]'` inside the virtual environment and review the resulting version changes.
+
+The inspector prints the recorded values and rule results for R-104 and R-105. It does not call an LLM or execute a graph yet. See [Section 1 explained](docs/section-01.md) for the evidence and the next graph step.
 
 ## The problem
 
@@ -56,7 +72,7 @@ The model will choose evidence requests. Application code will validate requests
 
 ## Build and learning roadmap
 
-Estimates include hands-on implementation, experiments, explanation, and focused checks. They are planning estimates, not measured durations.
+Estimates describe guided learning time, including hands-on implementation, experiments, explanation, and focused checks. Automated setup can be delegated. These are planning estimates, not measured durations.
 
 | Section | Main topic | Approximate time |
 |---|---|---:|
@@ -77,7 +93,7 @@ See the [section-by-section learning plan](docs/learning-plan.md) for tasks, exp
 
 The target is a local command-line demonstration with saved artifacts, one tool-calling model, and a small evaluation set. A frontend, hardware integration, simulator, vector database, and multiple agents are optional future experiments.
 
-The first sections will run without an LLM API key. Live tool calling will require a chosen provider and suitable credentials. Setup and execution instructions will be added and verified with the first working implementation.
+Section 1 runs without an LLM API key. Live tool calling in section 5 will require a chosen provider and suitable credentials.
 
 ## How we will assess it
 

@@ -6,6 +6,8 @@ Build SensorAssist yourself in small increments and understand its graph well en
 
 Use sessions of roughly 60-90 minutes. Split longer sections across sessions instead of treating their upper estimate as a deadline.
 
+The estimates describe time spent learning and experimenting. Setup and implementation can be delegated to the assistant, followed by a short walkthrough. Section 1 has been prepared this way; see [its walkthrough](section-01.md).
+
 For each increment:
 
 1. Explain one concept and why the investigation needs it.
