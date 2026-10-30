@@ -53,7 +53,7 @@ The source directory is configured when the tools are created. It is not a tool 
 
 `langchain-core` is now an explicit project dependency because the tools import it directly. Its pinned version was already present in the dependency snapshot, so no additional third-party dependency version is needed.
 
-The existing graph still performs its Section 3 investigation using its loader. In Section 5, an LLM node will request these tools, an execution node will run them, and results will return to the model through graph state.
+The existing graph still performs its Section 3 investigation using its loader. [Section 5](section-05.md) now demonstrates requests and results in message state using a scripted model and a tool execution node. A real LLM can be connected later.
 
 ## Verification
 

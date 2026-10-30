@@ -13,12 +13,51 @@ def main() -> None:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--graph", action="store_true", help="Run the LangGraph investigation.")
     mode.add_argument("--tools", action="store_true", help="Run a scripted evidence-tool demonstration.")
+    mode.add_argument("--simulate", action="store_true", help="Run the model/tool loop with a scripted model.")
     parser.add_argument("--trace", action="store_true", help="Print complete graph state snapshots.")
     parser.add_argument("--before-run", default="R-104", help="Earlier test run ID.")
     parser.add_argument("--after-run", default="R-105", help="Later test run ID.")
+    parser.add_argument("--max-tool-calls", type=int, default=6, help="Tool execution limit for --simulate.")
+    parser.add_argument("--max-model-turns", type=int, default=8, help="Model turn limit for --simulate.")
     args = parser.parse_args()
-    if args.trace and not args.graph:
-        parser.error("--trace requires --graph")
+    if args.trace and not (args.graph or args.simulate):
+        parser.error("--trace requires --graph or --simulate")
+    if args.max_tool_calls < 0 or args.max_model_turns < 1:
+        parser.error("--max-tool-calls must be nonnegative; --max-model-turns must be positive")
+    if args.simulate:
+        from langchain_core.messages import HumanMessage
+
+        from sensorassist.agent import build_agent
+        from sensorassist.simulation import ScriptedModel
+
+        print("SensorAssist | Section 5: SIMULATION (scripted model; no LLM or API key)")
+        print("START -> model -> tools -> model ... -> END\n")
+        model = ScriptedModel(args.before_run, args.after_run)
+        workflow = build_agent(
+            args.data_dir, model,
+            max_tool_calls=args.max_tool_calls, max_model_turns=args.max_model_turns,
+        )
+        request = {"messages": [HumanMessage(content=f"Compare runs {args.before_run} and {args.after_run}.")]}
+        final_state = {}
+        for part in workflow.stream(request, stream_mode=["updates", "values"], version="v2"):
+            if part["type"] == "updates":
+                for node, update in part["data"].items():
+                    print(f"Node: {node}")
+                    for message in update.get("messages", []):
+                        if message.type == "ai" and message.tool_calls:
+                            for call in message.tool_calls:
+                                print(f"  Script requests {call['name']} {json.dumps(call['args'])} [{call['id']}]")
+                        elif message.type == "tool":
+                            print(f"  Tool result: {message.name} [{message.tool_call_id}], {message.status}")
+            elif part["type"] == "values":
+                final_state = part["data"]
+                if args.trace:
+                    snapshot = {**final_state, "messages": [message.model_dump() for message in final_state["messages"]]}
+                    print(json.dumps(snapshot, indent=2))
+        print(f"\nStatus: {final_state['status']}")
+        print(f"Model turns: {final_state['model_turns']}; tool calls executed: {final_state.get('tool_calls_used', 0)}")
+        print(final_state["messages"][-1].content)
+        return
     if args.tools:
         from sensorassist.tools import build_tools
 

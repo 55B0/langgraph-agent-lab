@@ -2,7 +2,7 @@
 
 Learning LangGraph by building **SensorAssist**, an agent that investigates fictional sensor software test failures.
 
-**Status:** Sections 1-4 are implemented: synthetic evidence, a LangGraph workflow with conditional routing, and three evidence tools with a scripted demonstration. LLM-selected tool calls and persistence are planned.
+**Status:** Sections 1-4 and the offline part of Section 5 are implemented: evidence tools, conditional routing, and a bounded model/tool loop using a clearly labeled scripted model. A real LLM connection and persistence are future work.
 
 ## Run Section 1
 
@@ -72,7 +72,35 @@ The demo reads both test runs, compares their configurations, and searches the f
 
 The tools accept task arguments rather than arbitrary filesystem paths. Missing records and no-match searches have explicit results. See [Section 4 explained](docs/section-04.md) for the contracts, examples, and current limits.
 
-The Section 3 graph remains a scripted workflow using its existing loader. Section 5 will connect an LLM and these tool objects through a tool execution node.
+The Section 3 graph remains a scripted workflow using its existing loader. The offline Section 5 loop below calls these tool objects through a tool execution node.
+
+## Run the offline model/tool loop (Section 5)
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --simulate
+```
+
+This runs real LangGraph orchestration and real local tools with a **scripted model substitute**. It uses no LLM, API key, or provider connection. The recipe requests two runs, compares their referenced configurations, searches the specification, and summarizes the returned evidence. Tool requests are predefined; the simulation does not understand arbitrary natural-language questions.
+
+```mermaid
+flowchart LR
+    S([START]) --> M[model]
+    M -->|Tool requests| T[tools]
+    T -->|Continue| M
+    T -->|Limit reached| X[stop]
+    M -->|Final response| E([END])
+    X --> E
+```
+
+Requests and results accumulate in message state with matching tool-call IDs. The default reference case uses five model turns and four tool calls. To demonstrate stopping, run:
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --simulate --max-tool-calls 1
+```
+
+The loop stops with `tool_call_limit` and preserves a result for every requested call, including rejected calls. `--max-model-turns` limits model invocations. Add `--trace` for full message-state snapshots, or `--after-run R-999` for incomplete evidence.
+
+See [Section 5 explained](docs/section-05.md). The model is injected through an interface so a bound live model can be added later; no real-provider behavior has been verified yet.
 
 ## The problem
 
@@ -134,7 +162,7 @@ Estimates describe guided learning time, including hands-on implementation, expe
 | 2 | State, nodes, and a first executable graph | 1-1.5 hours |
 | 3 | Conditional edges and incomplete evidence | 45-75 minutes |
 | 4 | Three evidence tools and their contracts | 1-1.5 hours |
-| 5 | LLM tool calling and the investigation loop | 1.5-2.5 hours |
+| 5 | Model/tool loop: simulation first, optional live LLM later | 1.5-2.5 hours |
 | 6 | Structured reports, failures, and stopping | 1-2 hours |
 | 7 | Checkpointing, human input, and resume | 1.5-2.5 hours |
 | 8 | Evaluation, documentation, and demonstration | 2-3 hours |
@@ -145,9 +173,9 @@ See the [section-by-section learning plan](docs/learning-plan.md) for tasks, exp
 
 ## Scope of the first version
 
-The target is a local command-line demonstration with saved artifacts, one tool-calling model, and a small evaluation set. A frontend, hardware integration, simulator, vector database, and multiple agents are optional future experiments.
+The target is a local command-line demonstration with saved artifacts, a model/tool loop, and a small evaluation set. Offline simulation is the default learning path; a real tool-calling model is an optional later integration. A frontend, hardware integration, sensor simulator, vector database, and multiple agents are optional future experiments.
 
-Sections 1-4 run without an LLM API key. Live tool calling in section 5 will require a chosen provider and suitable credentials.
+All current modes run without an LLM API key. A future live-model mode will require a provider and, for a hosted API, suitable local credentials. Such credentials must stay outside tracked files.
 
 ## How we will assess it
 

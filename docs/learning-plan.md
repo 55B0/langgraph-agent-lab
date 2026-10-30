@@ -8,6 +8,8 @@ Use sessions of roughly 60-90 minutes. Split longer sections across sessions ins
 
 The estimates describe time spent learning and experimenting. Setup and implementation can be delegated to the assistant, followed by a short walkthrough. Sections 1-4 have been prepared this way; see the walkthroughs for [Section 1](section-01.md), [Section 2](section-02.md), [Section 3](section-03.md), and [Section 4](section-04.md).
 
+Section 5 now follows an offline-first approach at the user's request. Its [simulation walkthrough](section-05.md) covers the implemented loop; live LLM integration and validation remain optional future work.
+
 For each increment:
 
 1. Explain one concept and why the investigation needs it.
@@ -27,14 +29,14 @@ Commits and pushes require explicit approval. Before each one, verify the Uni ac
 | 2. First graph | 60-90 min | A running graph with visible state updates |
 | 3. Routing | 45-75 min | Different paths for complete and incomplete evidence |
 | 4. Tools | 60-90 min | Three independently verifiable evidence tools |
-| 5. Agent loop | 90-150 min | A model chooses tools and consumes their results |
+| 5. Model/tool loop | 90-150 min | A scripted model requests real tools; a live model can be added later |
 | 6. Reliable outcomes | 60-120 min | Structured reports and bounded failure handling |
 | 7. Human input and persistence | 90-150 min | A paused investigation survives a process restart |
 | 8. Evaluation and presentation | 120-180 min | Baseline comparison, documented results, and a short demo |
 
 The sum is about **10-16 focused hours**. Reserve **12-20 hours** including environment, provider setup, and debugging. These are estimates for a deliberately small implementation. Reassess them after section 2 and again after the first live model run.
 
-The first executable graph should appear after about 2-3 focused hours. The first model-driven investigation should appear after about 5-8.5 hours. Finish a section's completion criteria before adding the next feature.
+The first executable graph should appear after about 2-3 focused hours. The first model/tool-loop demonstration should appear after about 5-8.5 hours. Finish a section's completion criteria before adding the next feature.
 
 ## Section 1: local setup and a verifiable case
 
@@ -105,24 +107,24 @@ Start specification search with a simple local lookup. Tools must only access so
 
 **Done when:** every tool has a clear contract, predictable missing-data behavior, and results you can verify manually. No tool secretly performs the whole diagnosis.
 
-## Section 5: the tool-calling agent loop
+## Section 5: the model/tool loop, simulation first
 
-**Time:** 90-150 minutes, including basic provider setup.
+**Time:** 90-150 minutes of guided learning; optional provider setup is deferred.
 
 **Understand:** model tool binding, AI tool requests, tool-result messages, matching call IDs, accumulated message state, and the edge that routes back to the model.
 
-**Build:** choose a tool-calling model and its integration, configure local credentials, and connect one model node to one explicit tool execution node. Use LangGraph's Graph API so the execution path remains visible. Keep scripted graph tests separate from live model runs.
+**Build:** inject a scripted model substitute into one model node connected to an explicit tool execution node. Use real evidence tools, accumulated message state, and matching tool-call IDs. Keep the Graph API visible. A later live-model adapter can use the same interface after binding the tool schemas; API credentials and live verification are separate work.
 
 ```text
 START -> model -> requested tools -> model
               -> final report -> END
 ```
 
-Enforce an initial six-tool-call budget in code before execution, counting every individual call even if several arrive in one request. Also bound model turns, per-call timeouts, and retries so the investigation has a finite execution budget. Provide a bounded stop outcome. Preserve the tool-message protocol when rejecting or stopping requests.
+Enforce an initial six-tool-call budget in code before dispatch, counting every individual attempt even if several arrive in one request. Also bound model turns and graph recursion. Provide a stopped outcome and preserve the tool-message protocol for rejected requests. The offline implementation makes no provider calls or retries. A future live adapter must additionally configure request timeouts and bounded retries; turn limits alone do not impose a wall-clock timeout on a blocking adapter.
 
-**Your experiment:** compare a question about one run with a question comparing two runs. Inspect the selected tools and arguments; explain what evidence each result adds. Do not require one exact call sequence when several are valid.
+**Your experiment:** run the scripted reference case, then an unknown run, then a one-call budget. Inspect requests and results. Explain why the model node runs again after a tool result and why the limited case stops. The script receives scenario IDs; it does not interpret arbitrary questions. Free-form question experiments belong to a later live-model integration.
 
-**Done when:** a live model selects and consumes evidence tools, produces a supported answer, and cannot continue beyond the budget. You can distinguish model choices from transitions enforced by graph code.
+**Done for the offline stage when:** the scripted model requests real tools, consumes their returned evidence, retains the complete message history, and stops within its budgets. You can distinguish scripted choices from graph transitions. This does not establish autonomous tool selection or LLM answer quality; those require real-model integration tests and evaluation.
 
 ## Section 6: structured reports and reliable failure behavior
 
@@ -171,7 +173,7 @@ Keep ordinary tests independent of paid API access. Prepare CI for those tests w
 ## Milestones and review points
 
 - After section 3: a small reproducible LangGraph workflow with conditional routing.
-- After section 5: the first genuine tool-using agent.
+- After section 5's offline stage: a tested model/tool loop with scripted choices. Real autonomous tool selection remains an optional live-model milestone.
 - After section 7: a stateful investigation with human input and durable resume.
 - After section 8: an evaluated portfolio demonstration with accurate documentation.
 
