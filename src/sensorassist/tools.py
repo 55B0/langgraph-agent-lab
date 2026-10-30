@@ -1,4 +1,9 @@
-"""Section 4: evidence tools with schemas for future model tool calling."""
+"""Section 4: reusable evidence functions exposed as named tool objects.
+
+The @tool decorator uses each function's description and typed arguments to
+define its model-visible interface. Tools retrieve facts; they do not decide
+which tool runs next. That choice belongs to the script or a future model.
+"""
 
 import json
 import re
@@ -9,26 +14,33 @@ from langchain_core.tools import BaseTool, tool
 
 def build_tools(data_dir: Path) -> dict[str, BaseTool]:
     """Bind tools to one source directory, outside their model-visible inputs."""
+    # Capture the configured directory here. A model can supply IDs or a query,
+    # but the directory itself is not part of any tool's argument schema.
     root = data_dir.resolve()
 
     def source_path(folder: str, filename: str) -> Path:
+        # Resolve links and relative paths before enforcing the source boundary.
         path = (root / folder / filename).resolve()
         if not path.is_relative_to(root):
             raise ValueError("Evidence path must remain inside the configured data directory.")
         return path
 
     def read_record(folder: str, record_id: str, prefix: str, id_field: str) -> dict:
+        # Validate IDs before constructing paths: accept R-105, not a filename
+        # or a path into unrelated files such as tests or local credentials.
         if len(record_id) > 64 or not re.fullmatch(rf"{prefix}-[0-9]+", record_id):
             return {"status": "invalid_argument", "message": f"Expected an ID such as {prefix}-104."}
         path = source_path(folder, f"{record_id}.json")
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
+            # not_found is data the caller can act on, not a fabricated record.
             return {"status": "not_found", "missing_evidence": [f"{folder}/{record_id}.json"]}
         if record[id_field] != record_id or record["synthetic"] is not True:
             raise ValueError("Evidence record identity or synthetic label is inconsistent.")
         return {"status": "found", "record": record}
 
+    # The following decorated functions become invokable tools with schemas.
     @tool
     def read_test_run(run_id: str) -> dict:
         """Read a fictional test run by ID, for example R-105.
@@ -58,7 +70,10 @@ def build_tools(data_dir: Path) -> dict[str, BaseTool]:
             return {"status": "not_found", "missing_evidence": list(dict.fromkeys(missing))}
         before_record, after_record = before["record"], after["record"]
         changes = []
+        # An absent field and an explicit JSON null are different changes.
         absent = object()
+        # Record IDs identify the two inputs; their difference is not a changed
+        # sensor setting. Source IDs are returned separately for citations.
         fields = (before_record.keys() | after_record.keys()) - {"source_id", "config_id"}
         for field in sorted(fields):
             if before_record.get(field, absent) != after_record.get(field, absent):
@@ -82,6 +97,8 @@ def build_tools(data_dir: Path) -> dict[str, BaseTool]:
         Returns up to three matching paragraphs with source IDs, exact text,
         and line numbers. This is literal keyword search, not semantic search.
         """
+        # Literal keyword matching keeps retrieval transparent and reproducible.
+        # This does not use embeddings or understand synonyms.
         terms = set(re.findall(r"[a-z0-9]+", query.lower()))
         if not terms or len(query) > 500:
             return {"status": "invalid_argument", "message": "Use a nonempty query of at most 500 characters containing letters or digits."}
@@ -96,6 +113,8 @@ def build_tools(data_dir: Path) -> dict[str, BaseTool]:
             path = source_path("specs", candidate.name)
             lines = path.read_text(encoding="utf-8").splitlines()
             start = 0
+            # Blank lines delimit paragraphs. Keep the original line positions
+            # so each returned quotation can be checked against its source file.
             for end in range(len(lines) + 1):
                 if end < len(lines) and lines[end].strip():
                     continue
@@ -111,6 +130,7 @@ def build_tools(data_dir: Path) -> dict[str, BaseTool]:
                         "matched_terms": sorted(matched),
                     })
                 start = end + 1
+        # More matched query words rank first; ties have a stable source order.
         matches.sort(key=lambda match: (-len(match["matched_terms"]), match["path"], match["start_line"]))
         return {"status": "found" if matches else "no_matches", "matches": matches[:3]}
 

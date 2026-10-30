@@ -1,4 +1,9 @@
-"""A deterministic LangGraph investigation with conditional evidence routing."""
+"""Sections 2-3: investigate through evidence state and a conditional edge.
+
+This is the --graph mode. Its nodes follow fixed assessment rules. The newer
+--simulate mode uses agent.py and message history instead; keeping both makes
+the progression from a simple workflow to a model/tool loop visible.
+"""
 
 from functools import partial
 from pathlib import Path
@@ -11,10 +16,16 @@ from sensorassist.case_data import load_run
 
 
 class InvestigationState(TypedDict, total=False):
+    """The request starts with two IDs; nodes add the remaining fields."""
+
+    # Request: which recorded runs should be compared?
     before_run_id: str
     after_run_id: str
+    # Loaded facts and missing-file paths are kept separately so the router
+    # can choose a path without opening files or inspecting report text.
     evidence: dict
     missing_evidence: list[str]
+    # Assessment and final output. These fields are added later in the run.
     findings: list[str]
     status: Literal["explained", "unresolved", "incomplete"]
     report: str
@@ -28,8 +39,12 @@ def load_case(state: InvestigationState, *, data_dir: Path) -> dict:
         try:
             run, config = load_run(data_dir, state[id_field])
         except FileNotFoundError as error:
+            # A missing file is an expected incomplete-evidence outcome.
+            # Malformed JSON and other programming/data errors still surface.
             missing.append(Path(error.filename).resolve().relative_to(data_dir.resolve()).as_posix())
             continue
+        # The assessment below implements this known specification in code.
+        # Loading Markdown does not mean an LLM is interpreting its contents.
         if any(record["spec_id"] != "SPEC-DETECTION-V1" for record in (run, config)):
             raise ValueError("This workflow implements only the fictional SPEC-DETECTION-V1 rule.")
         evidence[side] = {"run": run, "config": config}
@@ -38,16 +53,20 @@ def load_case(state: InvestigationState, *, data_dir: Path) -> dict:
         evidence["specification"] = spec_path.read_text(encoding="utf-8")
     except FileNotFoundError:
         missing.append("specs/SPEC-DETECTION-V1.md")
+    # Return a state UPDATE. The original request IDs remain in shared state.
     return {"evidence": evidence, "missing_evidence": missing}
 
 
 def route_after_load(state: InvestigationState) -> Literal["assess_case", "missing_data"]:
     """Choose the next node from the evidence availability recorded in state."""
+    # Our code chooses the next node's name; LangGraph follows that connection.
     return "missing_data" if state["missing_evidence"] else "assess_case"
 
 
 def missing_data(state: InvestigationState) -> dict:
     """Finish an incomplete investigation without attempting a diagnosis."""
+    # This branch writes its own report and goes directly to END. It does not
+    # execute assess_case or the normal report node, or pause for human input.
     missing_lines = [f"- Missing: {path}" for path in state["missing_evidence"]]
     return {
         "status": "incomplete",
@@ -79,6 +98,9 @@ def assess_case(state: InvestigationState) -> dict:
             f"[{run['source_id']}, {config['source_id']}, {evidence['spec_id']}]"
         )
     before_run, after_run = before["run"], after["run"]
+    # Isolate the threshold change before attributing changed detection to it.
+    # If the input signal, firmware, or other recorded conditions also changed,
+    # this simple comparison is insufficient for that explanation.
     same_context = all(
         before_run[key] == after_run[key]
         for key in ("sensor_id", "firmware_version", "test_id")
@@ -93,6 +115,8 @@ def assess_case(state: InvestigationState) -> dict:
         before_run["observation"]["actual_detection"]
         != after_run["observation"]["actual_detection"]
     )
+    # "explained" describes the recorded behavior. It does not establish whether
+    # the configuration change was intended or approve any fix.
     explained = all(rule_matches) and same_context and thresholds_differ and detection_changed
     if explained:
         findings.append("The threshold change explains the recorded detection change under the fictional rule.")
@@ -123,12 +147,17 @@ def report(state: InvestigationState) -> dict:
 
 def build_graph(data_dir: Path) -> CompiledStateGraph:
     """Route to assessment or missing-data handling after evidence loading."""
+    # The schema declares the shared state. With no custom reducers, an update
+    # replaces the named field and leaves fields omitted from the update intact.
     builder = StateGraph(InvestigationState)
+    # Bind the source directory as application configuration, outside the state.
     builder.add_node("load_case", partial(load_case, data_dir=data_dir))
     builder.add_node("assess_case", assess_case)
     builder.add_node("report", report)
     builder.add_node("missing_data", missing_data)
     builder.add_edge(START, "load_case")
+    # Replace a fixed load_case -> assess_case edge with one exclusive choice.
+    # Keeping a fixed edge here as well would cause it to execute too.
     builder.add_conditional_edges(
         "load_case",
         route_after_load,
@@ -137,4 +166,5 @@ def build_graph(data_dir: Path) -> CompiledStateGraph:
     builder.add_edge("assess_case", "report")
     builder.add_edge("report", END)
     builder.add_edge("missing_data", END)
+    # Prepare the executable workflow; invoke/stream will actually run it.
     return builder.compile()

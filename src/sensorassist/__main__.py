@@ -1,4 +1,9 @@
-"""Inspect evidence or run the LangGraph workflow with conditional routing."""
+"""Choose a learning mode and display what happens during execution.
+
+No flag: inspect records (Section 1). --graph: evidence-state workflow (2-3).
+--tools: direct tool calls (4). --simulate: a scripted model/tool loop (5).
+This module handles terminal input/output; the graph modules define execution.
+"""
 
 import argparse
 import json
@@ -32,15 +37,20 @@ def main() -> None:
 
         print("SensorAssist | Section 5: SIMULATION (scripted model; no LLM or API key)")
         print("START -> model -> tools -> model ... -> END\n")
+        # The script gets the scenario IDs explicitly; it does not understand
+        # the natural-language request like a real LLM would.
         model = ScriptedModel(args.before_run, args.after_run)
         workflow = build_agent(
             args.data_dir, model,
             max_tool_calls=args.max_tool_calls, max_model_turns=args.max_model_turns,
         )
+        # The HumanMessage is the initial state. AI requests and ToolMessage
+        # results will accumulate alongside it through the add_messages reducer.
         request = {"messages": [HumanMessage(content=f"Compare runs {args.before_run} and {args.after_run}.")]}
         final_state = {}
         for part in workflow.stream(request, stream_mode=["updates", "values"], version="v2"):
             if part["type"] == "updates":
+                # updates contains only the fields returned by the current node.
                 for node, update in part["data"].items():
                     print(f"Node: {node}")
                     for message in update.get("messages", []):
@@ -48,8 +58,12 @@ def main() -> None:
                             for call in message.tool_calls:
                                 print(f"  Script requests {call['name']} {json.dumps(call['args'])} [{call['id']}]")
                         elif message.type == "tool":
+                            # "success" means the tool returned normally. Its
+                            # content may still report an expected not_found.
                             print(f"  Tool result: {message.name} [{message.tool_call_id}], {message.status}")
             elif part["type"] == "values":
+                # values is the full state after LangGraph applies the update.
+                # Read this snapshot rather than rebuilding state ourselves.
                 final_state = part["data"]
                 if args.trace:
                     snapshot = {**final_state, "messages": [message.model_dump() for message in final_state["messages"]]}
@@ -71,6 +85,8 @@ def main() -> None:
             print("Result: " + json.dumps(result, indent=2))
             return result
 
+        # This recipe calls tools directly. There is no model node or graph
+        # loop in --tools mode; --simulate demonstrates those additional parts.
         before = call_tool("read_test_run", {"run_id": args.before_run})
         after = call_tool("read_test_run", {"run_id": args.after_run})
         if before["status"] == "found" and after["status"] == "found":
@@ -88,6 +104,8 @@ def main() -> None:
         print("SensorAssist | Section 3: conditional LangGraph workflow")
         print("START -> load_case -> assess_case -> report -> END")
         print("                   -> missing_data -> END (when evidence is missing)\n")
+        # This earlier graph uses evidence fields rather than message history.
+        # The route changes when load_case records missing evidence.
         request = {"before_run_id": args.before_run, "after_run_id": args.after_run}
         final_state = {}
         for part in build_graph(args.data_dir).stream(
