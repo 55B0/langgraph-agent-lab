@@ -2,7 +2,7 @@
 
 Learning LangGraph by building **SensorAssist**, an agent that investigates fictional sensor software test failures.
 
-**Status:** Sections 1-3 are implemented: synthetic evidence, a data inspector, and a LangGraph workflow with conditional routing and inspectable state updates. Model-selected tools and persistence are planned.
+**Status:** Sections 1-4 are implemented: synthetic evidence, a LangGraph workflow with conditional routing, and three evidence tools with a scripted demonstration. LLM-selected tool calls and persistence are planned.
 
 ## Run Section 1
 
@@ -55,6 +55,24 @@ flowchart LR
 ```
 
 See [Section 2 explained](docs/section-02.md) for state and nodes, and [Section 3 explained](docs/section-03.md) for conditional routing. The graph applies the known fictional rule in code; it does not interpret the specification with an LLM.
+
+## Run the tools (Section 4)
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --tools
+```
+
+The demo reads both test runs, compares their configurations, and searches the fictional specification. Every call prints the tool name, input arguments, and returned evidence. The calls are scripted and use no model or API key.
+
+| Tool | Input | Output |
+|---|---|---|
+| `read_test_run` | Run ID, such as `R-105` | Recorded observations, configuration reference, and source ID |
+| `compare_configs` | Two configuration IDs | Changed fields and both source IDs |
+| `search_spec` | Keyword query | Up to three matching passages with source IDs and line numbers |
+
+The tools accept task arguments rather than arbitrary filesystem paths. Missing records and no-match searches have explicit results. See [Section 4 explained](docs/section-04.md) for the contracts, examples, and current limits.
+
+The Section 3 graph remains a scripted workflow using its existing loader. Section 5 will connect an LLM and these tool objects through a tool execution node.
 
 ## The problem
 
@@ -129,7 +147,7 @@ See the [section-by-section learning plan](docs/learning-plan.md) for tasks, exp
 
 The target is a local command-line demonstration with saved artifacts, one tool-calling model, and a small evaluation set. A frontend, hardware integration, simulator, vector database, and multiple agents are optional future experiments.
 
-Sections 1-3 run without an LLM API key. Live tool calling in section 5 will require a chosen provider and suitable credentials.
+Sections 1-4 run without an LLM API key. Live tool calling in section 5 will require a chosen provider and suitable credentials.
 
 ## How we will assess it
 

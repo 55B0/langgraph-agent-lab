@@ -10,13 +10,39 @@ from sensorassist.case_data import load_run
 def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect fictional sensor test evidence.")
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
-    parser.add_argument("--graph", action="store_true", help="Run the LangGraph investigation.")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--graph", action="store_true", help="Run the LangGraph investigation.")
+    mode.add_argument("--tools", action="store_true", help="Run a scripted evidence-tool demonstration.")
     parser.add_argument("--trace", action="store_true", help="Print complete graph state snapshots.")
     parser.add_argument("--before-run", default="R-104", help="Earlier test run ID.")
     parser.add_argument("--after-run", default="R-105", help="Later test run ID.")
     args = parser.parse_args()
     if args.trace and not args.graph:
         parser.error("--trace requires --graph")
+    if args.tools:
+        from sensorassist.tools import build_tools
+
+        tools = build_tools(args.data_dir)
+        print("SensorAssist | Section 4: scripted tool calls (no LLM)")
+
+        def call_tool(name: str, arguments: dict) -> dict:
+            print(f"\nTool: {name}")
+            print("Input: " + json.dumps(arguments))
+            result = tools[name].invoke(arguments)
+            print("Result: " + json.dumps(result, indent=2))
+            return result
+
+        before = call_tool("read_test_run", {"run_id": args.before_run})
+        after = call_tool("read_test_run", {"run_id": args.after_run})
+        if before["status"] == "found" and after["status"] == "found":
+            call_tool("compare_configs", {
+                "before_config_id": before["run"]["config_id"],
+                "after_config_id": after["run"]["config_id"],
+            })
+        else:
+            print("\nConfiguration comparison skipped: a required run was not found.")
+        call_tool("search_spec", {"query": "detection threshold"})
+        return
     if args.graph:
         from sensorassist.graph import build_graph
 
