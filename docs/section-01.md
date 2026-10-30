@@ -1,6 +1,6 @@
 # Section 1: environment and first case
 
-Section 1 prepares the evidence that the first LangGraph workflow will process. The current command is a deterministic inspector; graph orchestration comes in section 2.
+Section 1 prepares the evidence that the first LangGraph workflow processes. The default command remains a deterministic inspector; [Section 2](section-02.md) adds graph orchestration with `--graph`.
 
 Verified locally on Windows with Python 3.11.7 and LangGraph 1.2.18: the inspector runs, all three fixture checks pass, `StateGraph` imports successfully, and `pip check` reports no broken requirements. Dependency versions are recorded in `requirements.lock`.
 
@@ -46,10 +46,10 @@ This distinguishes changing a configuration record from generating a new test ru
 
 ## What becomes LangGraph next
 
-The next step will give the workflow explicit shared state and three nodes:
+Section 2 gives the workflow explicit shared state and three nodes:
 
 ```text
 START -> load_case -> assess_case -> report -> END
 ```
 
-The loader will place evidence into state. Assessment will add findings. The report node will consume those findings. Inspecting each node's state update is the first LangGraph lesson.
+The loader places evidence into state. Assessment adds findings. The report node consumes those findings. Inspecting each node's state update is the first LangGraph lesson.

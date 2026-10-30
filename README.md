@@ -2,7 +2,7 @@
 
 Learning LangGraph by building **SensorAssist**, an agent that investigates fictional sensor software test failures.
 
-**Status:** Section 1 is implemented: local setup, synthetic evidence, a deterministic data inspector, and fixture checks. LangGraph orchestration, model-selected tools, and persistence are planned.
+**Status:** Sections 1 and 2 are implemented: synthetic evidence, a data inspector, and a three-node LangGraph workflow with inspectable state updates. Model-selected tools, conditional graph routing, and persistence are planned.
 
 ## Run Section 1
 
@@ -18,7 +18,33 @@ py -3.11 -m venv .venv
 
 The lock file records the resolved development dependencies from the verified Windows/Python 3.11 environment. To resolve dependencies again instead, install with `pip install -e '.[dev]'` inside the virtual environment and review the resulting version changes.
 
-The inspector prints the recorded values and rule results for R-104 and R-105. It does not call an LLM or execute a graph yet. See [Section 1 explained](docs/section-01.md) for the evidence and the next graph step.
+The inspector prints the recorded values and rule results for R-104 and R-105. This default mode does not call an LLM or execute a graph. See [Section 1 explained](docs/section-01.md) for the evidence.
+
+## Run Section 2
+
+After setup, run the LangGraph workflow from the repository root:
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --graph
+```
+
+It prints each node's updated fields, the fields retained in shared state, and a final report with evidence references. Add `--trace` to print the complete state snapshots:
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --graph --trace
+```
+
+The implemented graph is a scripted workflow:
+
+```mermaid
+flowchart LR
+    S([START]) --> L[load_case]
+    L --> A[assess_case]
+    A --> R[report]
+    R --> E([END])
+```
+
+See [Section 2 explained](docs/section-02.md) for the state fields, node responsibilities, and a small experiment. The graph applies the known fictional rule in code; it does not interpret the specification with an LLM.
 
 ## The problem
 
@@ -55,7 +81,7 @@ All sensor behavior, runs, identifiers, and specifications are synthetic. This i
 
 ## Planned architecture
 
-The first implementation will be a small deterministic workflow. A later version will introduce model-selected tools within an explicit LangGraph `StateGraph`.
+The current implementation is the deterministic workflow above. The following diagram shows a future version with model-selected tools and human input within an explicit LangGraph `StateGraph`.
 
 ```mermaid
 flowchart TD
@@ -93,7 +119,7 @@ See the [section-by-section learning plan](docs/learning-plan.md) for tasks, exp
 
 The target is a local command-line demonstration with saved artifacts, one tool-calling model, and a small evaluation set. A frontend, hardware integration, simulator, vector database, and multiple agents are optional future experiments.
 
-Section 1 runs without an LLM API key. Live tool calling in section 5 will require a chosen provider and suitable credentials.
+Sections 1 and 2 run without an LLM API key. Live tool calling in section 5 will require a chosen provider and suitable credentials.
 
 ## How we will assess it
 

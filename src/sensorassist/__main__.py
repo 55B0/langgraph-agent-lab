@@ -1,6 +1,7 @@
-"""Inspect the first synthetic case before adding graph orchestration."""
+"""Inspect evidence or run the Section 2 LangGraph workflow."""
 
 import argparse
+import json
 from pathlib import Path
 
 from sensorassist.case_data import load_run
@@ -9,7 +10,31 @@ from sensorassist.case_data import load_run
 def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect fictional sensor test evidence.")
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
+    parser.add_argument("--graph", action="store_true", help="Run the three-node LangGraph workflow.")
+    parser.add_argument("--trace", action="store_true", help="Print complete graph state snapshots.")
     args = parser.parse_args()
+    if args.trace and not args.graph:
+        parser.error("--trace requires --graph")
+    if args.graph:
+        from sensorassist.graph import build_graph
+
+        print("SensorAssist | Section 2: deterministic LangGraph workflow")
+        print("START -> load_case -> assess_case -> report -> END\n")
+        request = {"before_run_id": "R-104", "after_run_id": "R-105"}
+        final_state = {}
+        for part in build_graph(args.data_dir).stream(
+            request, stream_mode=["updates", "values"], version="v2"
+        ):
+            if part["type"] == "updates":
+                for node, update in part["data"].items():
+                    print(f"Node {node} writes: {', '.join(update)}")
+            elif part["type"] == "values":
+                final_state = part["data"]
+                print(f"State contains: {', '.join(final_state)}")
+                if args.trace:
+                    print(json.dumps(final_state, indent=2))
+        print("\n" + final_state["report"])
+        return
 
     print("SensorAssist | Section 1: synthetic evidence inspection")
     print("This is a deterministic data inspector; the LangGraph agent is planned.\n")
