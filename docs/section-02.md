@@ -2,6 +2,8 @@
 
 This section turns the existing evidence inspection into a real LangGraph `StateGraph`. The workflow is deterministic and uses no LLM or API key. It applies the known fictional detection rule in code and loads the specification text as supporting evidence.
 
+This walkthrough describes the original three-node path. The current version also includes [Section 3's missing-evidence branch](section-03.md), so the terminal now labels the graph as Section 3 and includes `missing_evidence` in state. Complete evidence still takes the path described here.
+
 ## Run it
 
 From the repository root in PowerShell:
@@ -44,7 +46,7 @@ The graph checks that the recorded detections agree with `signal >= threshold`. 
 
 For the reference case, it reports that the threshold change explains the recorded detection change. It asks whether the change was intentional before recommending a configuration or test change.
 
-If the supplied records do not isolate that change, it returns `unresolved`. That assessment happens inside a node. Both outcomes still follow the same graph edges; conditional graph routing is the next section.
+If the supplied records do not isolate that change, it returns `unresolved`. That assessment happens inside a node. Both assessment outcomes still follow the edge to `report`. Section 3 introduces an earlier routing decision for missing evidence.
 
 ## Try one small experiment
 
@@ -68,7 +70,7 @@ The fixture checks and graph integration tests run with:
 
 ## Current boundaries
 
-The assessment implements only `SPEC-DETECTION-V1`; its rule is scripted rather than inferred from document text. Missing files and unsupported specification IDs surface as errors. Conditional routing for incomplete evidence, general tool argument validation, LLM choices, checkpointing, and human pause/resume belong to later sections.
+The assessment implements only `SPEC-DETECTION-V1`; its rule is scripted rather than inferred from document text. Section 3 handles missing files through the new `missing_data` branch. Unsupported specification IDs and invalid JSON still surface as errors. General tool argument validation, LLM choices, checkpointing, and human pause/resume belong to later sections.
 
 ## Official references
 

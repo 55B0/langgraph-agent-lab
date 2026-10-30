@@ -1,4 +1,4 @@
-"""Section 2: an explicit, deterministic LangGraph investigation."""
+"""A deterministic LangGraph investigation with conditional evidence routing."""
 
 from functools import partial
 from pathlib import Path
@@ -14,26 +14,49 @@ class InvestigationState(TypedDict, total=False):
     before_run_id: str
     after_run_id: str
     evidence: dict
+    missing_evidence: list[str]
     findings: list[str]
-    status: Literal["explained", "unresolved"]
+    status: Literal["explained", "unresolved", "incomplete"]
     report: str
 
 
 def load_case(state: InvestigationState, *, data_dir: Path) -> dict:
-    """Add raw evidence while leaving the request fields in state."""
-    before_run, before_config = load_run(data_dir, state["before_run_id"])
-    after_run, after_config = load_run(data_dir, state["after_run_id"])
-    records = (before_run, before_config, after_run, after_config)
-    if any(record["spec_id"] != "SPEC-DETECTION-V1" for record in records):
-        raise ValueError("Section 2 implements only the fictional SPEC-DETECTION-V1 rule.")
+    """Collect available evidence and record missing files for the router."""
+    evidence = {"spec_id": "SPEC-DETECTION-V1"}
+    missing = []
+    for side, id_field in (("before", "before_run_id"), ("after", "after_run_id")):
+        try:
+            run, config = load_run(data_dir, state[id_field])
+        except FileNotFoundError as error:
+            missing.append(Path(error.filename).resolve().relative_to(data_dir.resolve()).as_posix())
+            continue
+        if any(record["spec_id"] != "SPEC-DETECTION-V1" for record in (run, config)):
+            raise ValueError("This workflow implements only the fictional SPEC-DETECTION-V1 rule.")
+        evidence[side] = {"run": run, "config": config}
     spec_path = data_dir / "specs" / "SPEC-DETECTION-V1.md"
+    try:
+        evidence["specification"] = spec_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        missing.append("specs/SPEC-DETECTION-V1.md")
+    return {"evidence": evidence, "missing_evidence": missing}
+
+
+def route_after_load(state: InvestigationState) -> Literal["assess_case", "missing_data"]:
+    """Choose the next node from the evidence availability recorded in state."""
+    return "missing_data" if state["missing_evidence"] else "assess_case"
+
+
+def missing_data(state: InvestigationState) -> dict:
+    """Finish an incomplete investigation without attempting a diagnosis."""
+    missing_lines = [f"- Missing: {path}" for path in state["missing_evidence"]]
     return {
-        "evidence": {
-            "before": {"run": before_run, "config": before_config},
-            "after": {"run": after_run, "config": after_config},
-            "spec_id": "SPEC-DETECTION-V1",
-            "specification": spec_path.read_text(encoding="utf-8"),
-        }
+        "status": "incomplete",
+        "findings": [],
+        "report": "\n".join(
+            ["Status: incomplete"]
+            + missing_lines
+            + ["Next check: verify the requested run IDs and provide the missing evidence files."]
+        ),
     }
 
 
@@ -99,13 +122,19 @@ def report(state: InvestigationState) -> dict:
 
 
 def build_graph(data_dir: Path) -> CompiledStateGraph:
-    """Wire the three visible nodes with fixed edges, then compile."""
+    """Route to assessment or missing-data handling after evidence loading."""
     builder = StateGraph(InvestigationState)
     builder.add_node("load_case", partial(load_case, data_dir=data_dir))
     builder.add_node("assess_case", assess_case)
     builder.add_node("report", report)
+    builder.add_node("missing_data", missing_data)
     builder.add_edge(START, "load_case")
-    builder.add_edge("load_case", "assess_case")
+    builder.add_conditional_edges(
+        "load_case",
+        route_after_load,
+        {"assess_case": "assess_case", "missing_data": "missing_data"},
+    )
     builder.add_edge("assess_case", "report")
     builder.add_edge("report", END)
+    builder.add_edge("missing_data", END)
     return builder.compile()

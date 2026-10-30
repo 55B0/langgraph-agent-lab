@@ -2,7 +2,11 @@
 
 import json
 import shutil
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 from sensorassist.graph import build_graph
 
@@ -45,3 +49,53 @@ def test_changed_evidence_cannot_reuse_the_original_explanation(tmp_path):
     assert result["status"] == "unresolved"
     assert "contradicts" in result["report"]
     assert "The threshold change explains" not in result["report"]
+
+
+@pytest.mark.parametrize(
+    "missing_path",
+    ["runs/R-105.json", "configs/CFG-105.json", "specs/SPEC-DETECTION-V1.md"],
+)
+def test_missing_evidence_takes_only_the_incomplete_branch(tmp_path, missing_path):
+    copied_data = tmp_path / "data"
+    shutil.copytree(DATA_DIR, copied_data)
+    (copied_data / missing_path).unlink()
+    parts = list(
+        build_graph(copied_data).stream(
+            REQUEST, stream_mode=["updates", "values"], version="v2"
+        )
+    )
+    updates = [part["data"] for part in parts if part["type"] == "updates"]
+    assert [next(iter(update)) for update in updates] == ["load_case", "missing_data"]
+    result = [part["data"] for part in parts if part["type"] == "values"][-1]
+    assert result["status"] == "incomplete"
+    assert missing_path in result["missing_evidence"]
+    assert missing_path in result["report"]
+    assert result["findings"] == []
+    assert "before" in result["evidence"]
+    assert "The threshold change explains" not in result["report"]
+
+
+def test_unknown_run_keeps_request_and_reports_what_is_missing():
+    request = {**REQUEST, "after_run_id": "R-999"}
+    result = build_graph(DATA_DIR).invoke(request)
+    assert result["after_run_id"] == "R-999"
+    assert result["status"] == "incomplete"
+    assert result["missing_evidence"] == ["runs/R-999.json"]
+
+
+def test_invalid_json_is_not_hidden_as_missing_evidence(tmp_path):
+    copied_data = tmp_path / "data"
+    shutil.copytree(DATA_DIR, copied_data)
+    (copied_data / "runs" / "R-105.json").write_text("{invalid", encoding="utf-8")
+    with pytest.raises(json.JSONDecodeError):
+        build_graph(copied_data).invoke(REQUEST)
+
+
+def test_cli_can_demonstrate_missing_evidence_without_editing_data():
+    command = [sys.executable, "-m", "sensorassist", "--graph", "--after-run", "R-999"]
+    result = subprocess.run(command, cwd=DATA_DIR.parent, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "Node missing_data writes:" in result.stdout
+    assert "Node assess_case writes:" not in result.stdout
+    assert "Status: incomplete" in result.stdout
+    assert "runs/R-999.json" in result.stdout

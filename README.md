@@ -2,7 +2,7 @@
 
 Learning LangGraph by building **SensorAssist**, an agent that investigates fictional sensor software test failures.
 
-**Status:** Sections 1 and 2 are implemented: synthetic evidence, a data inspector, and a three-node LangGraph workflow with inspectable state updates. Model-selected tools, conditional graph routing, and persistence are planned.
+**Status:** Sections 1-3 are implemented: synthetic evidence, a data inspector, and a LangGraph workflow with conditional routing and inspectable state updates. Model-selected tools and persistence are planned.
 
 ## Run Section 1
 
@@ -20,7 +20,7 @@ The lock file records the resolved development dependencies from the verified Wi
 
 The inspector prints the recorded values and rule results for R-104 and R-105. This default mode does not call an LLM or execute a graph. See [Section 1 explained](docs/section-01.md) for the evidence.
 
-## Run Section 2
+## Run the graph (Sections 2-3)
 
 After setup, run the LangGraph workflow from the repository root:
 
@@ -34,17 +34,27 @@ It prints each node's updated fields, the fields retained in shared state, and a
 & .\.venv\Scripts\python.exe -m sensorassist --graph --trace
 ```
 
-The implemented graph is a scripted workflow:
+To demonstrate the missing-evidence branch without changing any files, request an unknown run:
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --graph --after-run R-999
+```
+
+The normal case returns `explained`; the unknown run returns `incomplete` and names the missing file. If the evidence exists but does not support the explanation, assessment returns `unresolved`.
+
+The implemented graph is a scripted workflow with a conditional edge:
 
 ```mermaid
 flowchart LR
     S([START]) --> L[load_case]
-    L --> A[assess_case]
+    L -->|Evidence complete| A[assess_case]
+    L -->|Evidence missing| M[missing_data]
     A --> R[report]
     R --> E([END])
+    M --> E
 ```
 
-See [Section 2 explained](docs/section-02.md) for the state fields, node responsibilities, and a small experiment. The graph applies the known fictional rule in code; it does not interpret the specification with an LLM.
+See [Section 2 explained](docs/section-02.md) for state and nodes, and [Section 3 explained](docs/section-03.md) for conditional routing. The graph applies the known fictional rule in code; it does not interpret the specification with an LLM.
 
 ## The problem
 
@@ -119,7 +129,7 @@ See the [section-by-section learning plan](docs/learning-plan.md) for tasks, exp
 
 The target is a local command-line demonstration with saved artifacts, one tool-calling model, and a small evaluation set. A frontend, hardware integration, simulator, vector database, and multiple agents are optional future experiments.
 
-Sections 1 and 2 run without an LLM API key. Live tool calling in section 5 will require a chosen provider and suitable credentials.
+Sections 1-3 run without an LLM API key. Live tool calling in section 5 will require a chosen provider and suitable credentials.
 
 ## How we will assess it
 

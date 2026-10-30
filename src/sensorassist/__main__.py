@@ -1,4 +1,4 @@
-"""Inspect evidence or run the Section 2 LangGraph workflow."""
+"""Inspect evidence or run the LangGraph workflow with conditional routing."""
 
 import argparse
 import json
@@ -10,17 +10,20 @@ from sensorassist.case_data import load_run
 def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect fictional sensor test evidence.")
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
-    parser.add_argument("--graph", action="store_true", help="Run the three-node LangGraph workflow.")
+    parser.add_argument("--graph", action="store_true", help="Run the LangGraph investigation.")
     parser.add_argument("--trace", action="store_true", help="Print complete graph state snapshots.")
+    parser.add_argument("--before-run", default="R-104", help="Earlier test run ID.")
+    parser.add_argument("--after-run", default="R-105", help="Later test run ID.")
     args = parser.parse_args()
     if args.trace and not args.graph:
         parser.error("--trace requires --graph")
     if args.graph:
         from sensorassist.graph import build_graph
 
-        print("SensorAssist | Section 2: deterministic LangGraph workflow")
-        print("START -> load_case -> assess_case -> report -> END\n")
-        request = {"before_run_id": "R-104", "after_run_id": "R-105"}
+        print("SensorAssist | Section 3: conditional LangGraph workflow")
+        print("START -> load_case -> assess_case -> report -> END")
+        print("                   -> missing_data -> END (when evidence is missing)\n")
+        request = {"before_run_id": args.before_run, "after_run_id": args.after_run}
         final_state = {}
         for part in build_graph(args.data_dir).stream(
             request, stream_mode=["updates", "values"], version="v2"
@@ -38,7 +41,7 @@ def main() -> None:
 
     print("SensorAssist | Section 1: synthetic evidence inspection")
     print("This is a deterministic data inspector; the LangGraph agent is planned.\n")
-    for run_id in ("R-104", "R-105"):
+    for run_id in (args.before_run, args.after_run):
         run, config = load_run(args.data_dir, run_id)
         observed = run["observation"]
         calculated = observed["signal"] >= config["detection_threshold"]
