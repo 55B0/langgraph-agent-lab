@@ -10,13 +10,22 @@ from pathlib import Path
 from typing import Annotated, Literal, Protocol, TypedDict
 
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
+from langgraph.types import interrupt
 
 from sensorassist.reporting import InvestigationReport, build_report
 from sensorassist.tools import build_tools
+
+
+REVIEW_NEXT_CHECKS = {
+    "yes": "Check whether the test expectation should be updated.",
+    "no": "Check how the threshold changed and whether it should be restored.",
+    "unsure": "Check the change history or ask the configuration owner.",
+}
 
 
 class ToolCallingModel(Protocol):
@@ -44,6 +53,7 @@ class AgentState(TypedDict, total=False):
     status: Literal["running", "completed", "stopped"]
     stop_reason: str
     report: InvestigationReport
+    human_answer: str
 
 
 def build_agent(
@@ -52,13 +62,13 @@ def build_agent(
     *,
     max_tool_calls: int = 6,
     max_model_turns: int = 8,
+    human_review: bool = False,
 ) -> CompiledStateGraph:
     """Build an executable graph; building alone does not run the investigation.
 
     data_dir, model, and limits are application configuration captured by the
     nodes. The changing messages and counters belong in AgentState instead.
-    No checkpointer is configured yet, so this graph does not save progress
-    across process restarts.
+    Human review saves progress in memory for the current process.
     """
     if max_tool_calls < 0 or max_model_turns < 1:
         raise ValueError("Tool budget must be nonnegative and model-turn budget positive.")
@@ -129,6 +139,26 @@ def build_agent(
         """Read the tool history and write the report into the backpack."""
         return {"report": build_report(state["messages"], state.get("stop_reason", ""))}
 
+    def after_report(state: AgentState) -> Literal["review", "done"]:
+        report = state["report"]
+        if report["status"] == "completed" and any(
+            finding.get("configuration_field") == "detection_threshold"
+            for finding in report["findings"]
+        ):
+            return "review"
+        return "done"
+
+    def review(state: AgentState) -> dict:
+        # LangGraph restarts this node on resume. The earlier tool nodes have
+        # already finished, and interrupt now returns the human's answer.
+        answer = interrupt("Was the threshold change intentional?")
+        if answer not in ("yes", "no", "unsure"):
+            raise ValueError("Review answer must be yes, no, or unsure.")
+        return {
+            "human_answer": answer,
+            "report": {**state["report"], "next_check": REVIEW_NEXT_CHECKS[answer]},
+        }
+
     # Register the work (nodes), then declare which step can run next (edges).
     builder = StateGraph(AgentState)
     builder.add_node("model", model_step)
@@ -140,8 +170,14 @@ def build_agent(
     builder.add_conditional_edges("model", after_model, {"tools": "tools", "done": "report"})
     builder.add_conditional_edges("tools", after_tools, {"model": "model", "stop": "stop"})
     builder.add_edge("stop", "report")
-    builder.add_edge("report", END)
+    if human_review:
+        builder.add_node("review", review)
+        builder.add_conditional_edges("report", after_report, {"review": "review", "done": END})
+        builder.add_edge("review", END)
+    else:
+        builder.add_edge("report", END)
     # compile prepares the runnable graph. The recursion limit is an additional
     # cap on graph super-steps, not Python recursion or a wall-clock timeout.
     # Each model turn can use a model and tool step; leave room for stop and report.
-    return builder.compile().with_config({"recursion_limit": 2 * max_model_turns + 4})
+    checkpointer = InMemorySaver() if human_review else None
+    return builder.compile(checkpointer=checkpointer).with_config({"recursion_limit": 2 * max_model_turns + 5})

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langgraph.types import Command
 
 from sensorassist.agent import build_agent
 from sensorassist.simulation import ScriptedModel
@@ -57,6 +58,7 @@ def test_simulation_uses_real_results_and_accumulates_messages_without_network(m
     assert {
         "text": "Configuration change: detection_threshold: 0.4 -> 0.7.",
         "evidence": ["CONFIG-CFG-104", "CONFIG-CFG-105"],
+        "configuration_field": "detection_threshold",
     } in report["findings"]
     assert_protocol_complete(result["messages"])
 
@@ -94,6 +96,32 @@ def test_malformed_config_reports_tool_error_and_keeps_run_evidence(tmp_path):
     assert result["report"]["evidence"] == ["RUN-R-104", "RUN-R-105"]
     assert "compare_configs" in result["report"]["next_check"]
     assert_protocol_complete(result["messages"])
+
+
+@pytest.mark.parametrize(("answer", "next_check"), [
+    ("yes", "test expectation"),
+    ("no", "restored"),
+    ("unsure", "change history"),
+])
+def test_review_resumes_with_human_answer_without_retrieving_evidence_again(answer, next_check):
+    workflow = build_agent(DATA_DIR, ScriptedModel(), human_review=True)
+    config = {"configurable": {"thread_id": "review-test"}}
+    paused = workflow.invoke(request(), config)
+    assert paused["__interrupt__"]
+    assert paused["tool_calls_used"] == 4
+
+    resumed = workflow.invoke(Command(resume=answer), config)
+    assert resumed["human_answer"] == answer
+    assert next_check in resumed["report"]["next_check"]
+    assert resumed["messages"] == paused["messages"]
+    assert resumed["tool_calls_used"] == 4
+
+
+def test_review_skips_incomplete_report():
+    workflow = build_agent(DATA_DIR, ScriptedModel(after_run_id="R-999"), human_review=True)
+    result = workflow.invoke(request(), {"configurable": {"thread_id": "missing-test"}})
+    assert result["report"]["status"] == "incomplete"
+    assert "__interrupt__" not in result
 
 
 class RepeatingModel:

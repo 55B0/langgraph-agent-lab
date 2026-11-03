@@ -1,7 +1,7 @@
 """Turn retrieved evidence into a structured investigation report."""
 
 import json
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from langchain_core.messages import AnyMessage, ToolMessage
 
@@ -9,6 +9,7 @@ from langchain_core.messages import AnyMessage, ToolMessage
 class Finding(TypedDict):
     text: str
     evidence: list[str]
+    configuration_field: NotRequired[str]
 
 
 class InvestigationReport(TypedDict):
@@ -49,6 +50,7 @@ def build_report(messages: list[AnyMessage], stop_reason: str = "") -> Investiga
                 findings.append({
                     "text": f"Configuration change: {change['field']}: {before} -> {after}.",
                     "evidence": sources,
+                    "configuration_field": change["field"],
                 })
             if not result["changes"]:
                 findings.append({"text": "No configuration field changes were found.", "evidence": sources})

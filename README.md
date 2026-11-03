@@ -108,6 +108,14 @@ The simulation now ends at a `report` node that turns tool results into findings
 
 A completed report records retrieved evidence. The next check still asks whether the threshold change was intentional.
 
+### Section 7 human review
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --simulate --review
+```
+
+When a completed report shows a threshold change, the graph displays the findings and pauses for `yes`, `no`, or `unsure`. Your answer determines the next check. The checkpoint lives in memory for this run, so answer in the same terminal session.
+
 ## The problem
 
 A failed test can leave evidence spread across run results, configuration files, and behavior specifications. SensorAssist will gather that evidence, explain what it supports, and identify what still needs investigation.

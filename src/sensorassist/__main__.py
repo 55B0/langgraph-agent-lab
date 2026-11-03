@@ -19,39 +19,52 @@ def main() -> None:
     mode.add_argument("--graph", action="store_true", help="Run the LangGraph investigation.")
     mode.add_argument("--tools", action="store_true", help="Run a scripted evidence-tool demonstration.")
     mode.add_argument("--simulate", action="store_true", help="Run the model/tool loop with a scripted model.")
+    parser.add_argument("--review", action="store_true", help="Ask for human input after a completed threshold comparison.")
     parser.add_argument("--trace", action="store_true", help="Print complete graph state snapshots.")
     parser.add_argument("--before-run", default="R-104", help="Earlier test run ID.")
     parser.add_argument("--after-run", default="R-105", help="Later test run ID.")
     parser.add_argument("--max-tool-calls", type=int, default=6, help="Tool execution limit for --simulate.")
     parser.add_argument("--max-model-turns", type=int, default=8, help="Model turn limit for --simulate.")
     args = parser.parse_args()
+    if args.review and not args.simulate:
+        parser.error("--review requires --simulate")
     if args.trace and not (args.graph or args.simulate):
         parser.error("--trace requires --graph or --simulate")
     if args.max_tool_calls < 0 or args.max_model_turns < 1:
         parser.error("--max-tool-calls must be nonnegative; --max-model-turns must be positive")
     if args.simulate:
         from langchain_core.messages import HumanMessage
+        from langgraph.types import Command
 
-        from sensorassist.agent import build_agent
+        from sensorassist.agent import REVIEW_NEXT_CHECKS, build_agent
         from sensorassist.simulation import ScriptedModel
 
-        print("SensorAssist | Section 6: SIMULATION (scripted model; no LLM or API key)")
-        print("START -> model -> tools -> model ... -> report -> END\n")
+        section = 7 if args.review else 6
+        print(f"SensorAssist | Section {section}: SIMULATION (scripted model; no LLM or API key)")
+        ending = "report -> review (if needed) -> END" if args.review else "report -> END"
+        print(f"START -> model -> tools -> model ... -> {ending}\n")
         # The script gets the scenario IDs explicitly; it does not understand
         # the natural-language request like a real LLM would.
         model = ScriptedModel(args.before_run, args.after_run)
         workflow = build_agent(
             args.data_dir, model,
             max_tool_calls=args.max_tool_calls, max_model_turns=args.max_model_turns,
+            human_review=args.review,
         )
         # The HumanMessage is the initial state. AI requests and ToolMessage
         # results will accumulate alongside it through the add_messages reducer.
         request = {"messages": [HumanMessage(content=f"Compare runs {args.before_run} and {args.after_run}.")]}
         final_state = {}
-        for part in workflow.stream(request, stream_mode=["updates", "values"], version="v2"):
+        # The same investigation ID selects the saved backpack when we resume.
+        config = {"configurable": {"thread_id": "sensorassist-review"}} if args.review else None
+        pending_review = None
+        for part in workflow.stream(request, config, stream_mode=["updates", "values"], version="v2"):
             if part["type"] == "updates":
                 # updates contains only the fields returned by the current node.
                 for node, update in part["data"].items():
+                    if node == "__interrupt__":
+                        pending_review = update[0].value
+                        continue
                     print(f"Node: {node}")
                     for message in update.get("messages", []):
                         if message.type == "ai" and message.tool_calls:
@@ -75,6 +88,20 @@ def main() -> None:
             print(f"- {finding['text']} [{', '.join(finding['evidence'])}]")
         for item in report["missing_information"]:
             print(f"- Missing: {item}")
+        if pending_review:
+            print(f"\nNode: review (paused)\n{pending_review}")
+            while True:
+                try:
+                    answer = input("Your answer (yes/no/unsure): ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    print("\nReview ended. This demo keeps its checkpoint in memory for this run only.")
+                    return
+                if answer in REVIEW_NEXT_CHECKS:
+                    break
+                print("Please enter yes, no, or unsure.")
+            final_state = workflow.invoke(Command(resume=answer), config)
+            print(f"Node: review (resumed)\nHuman answer: {final_state['human_answer']}")
+            report = final_state["report"]
         print(f"Next check: {report['next_check']}")
         return
     if args.tools:
