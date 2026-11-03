@@ -17,6 +17,7 @@ def main() -> None:
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--graph", action="store_true", help="Run the LangGraph investigation.")
+    mode.add_argument("--evaluate", action="store_true", help="Run the offline workflow scorecard.")
     mode.add_argument("--tools", action="store_true", help="Run a scripted evidence-tool demonstration.")
     mode.add_argument("--simulate", action="store_true", help="Run the model/tool loop with a scripted model.")
     mode.add_argument("--save-review", action="store_true", help="Run the simulation and save the review to disk.")
@@ -39,6 +40,10 @@ def main() -> None:
         parser.error("--resume-review and --answer must be used together")
     if args.resume_review == "":
         parser.error("Investigation ID must not be empty")
+    if args.evaluate:
+        from sensorassist.evaluation import run_scorecard
+
+        raise SystemExit(run_scorecard(args.data_dir))
     if args.save_review or args.resume_review is not None:
         from sensorassist.saved_review import run_saved_review
 

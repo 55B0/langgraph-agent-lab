@@ -130,6 +130,20 @@ Copy the printed investigation ID. Open a new terminal in the same project folde
 
 The local database lives at `.checkpoints/investigations.sqlite`. The ID selects the saved state, and LangGraph resumes the review using the evidence already gathered.
 
+### Section 8 offline scorecard
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --evaluate
+```
+
+| Case | Fixed workflow | Scripted tool loop |
+| --- | --- | --- |
+| Threshold change | Explains the detection change with the fictional rule | Reports the threshold change with both configuration references |
+| Missing run | Names the missing file and reports incomplete evidence | Names the missing file, reports incomplete evidence, and skips review |
+| One-call limit | — | Stops and keeps the first run as evidence |
+
+The bundled fixtures pass all five checks. A failed check makes the command exit with code 1. This scorecard compares behavior on known fictional cases. Evaluating a live model or generalizing to new cases would require a separate evaluation.
+
 ## The problem
 
 A failed test can leave evidence spread across run results, configuration files, and behavior specifications. SensorAssist will gather that evidence, explain what it supports, and identify what still needs investigation.
