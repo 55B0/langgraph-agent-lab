@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Annotated, Literal, Protocol, TypedDict
 
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -63,12 +64,13 @@ def build_agent(
     max_tool_calls: int = 6,
     max_model_turns: int = 8,
     human_review: bool = False,
+    checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
     """Build an executable graph; building alone does not run the investigation.
 
     data_dir, model, and limits are application configuration captured by the
     nodes. The changing messages and counters belong in AgentState instead.
-    Human review saves progress in memory for the current process.
+    Human review uses memory unless the caller supplies a persistent saver.
     """
     if max_tool_calls < 0 or max_model_turns < 1:
         raise ValueError("Tool budget must be nonnegative and model-turn budget positive.")
@@ -179,5 +181,6 @@ def build_agent(
     # compile prepares the runnable graph. The recursion limit is an additional
     # cap on graph super-steps, not Python recursion or a wall-clock timeout.
     # Each model turn can use a model and tool step; leave room for stop and report.
-    checkpointer = InMemorySaver() if human_review else None
+    if human_review and checkpointer is None:
+        checkpointer = InMemorySaver()
     return builder.compile(checkpointer=checkpointer).with_config({"recursion_limit": 2 * max_model_turns + 5})

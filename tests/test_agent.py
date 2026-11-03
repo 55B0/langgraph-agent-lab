@@ -124,6 +124,31 @@ def test_review_skips_incomplete_report():
     assert "__interrupt__" not in result
 
 
+def test_saved_review_resumes_in_a_fresh_process(tmp_path):
+    command = [sys.executable, "-m", "sensorassist"]
+
+    def run_cli(*args):
+        return subprocess.run(
+            [*command, *args], cwd=tmp_path, capture_output=True, text=True, timeout=20,
+        )
+
+    started = run_cli("--save-review", "--data-dir", str(DATA_DIR))
+    assert started.returncode == 0, started.stderr
+    thread_id = started.stdout.split("Investigation ID: ", 1)[1].splitlines()[0]
+    assert (tmp_path / ".checkpoints" / "investigations.sqlite").is_file()
+
+    # This fresh process has no local data folder. It must use saved evidence.
+    resumed = run_cli("--resume-review", thread_id, "--answer", "unsure")
+    assert resumed.returncode == 0, resumed.stderr
+    assert "Tool calls in this investigation: 4" in resumed.stdout
+    assert "CONFIG-CFG-105" in resumed.stdout
+    assert "Check the change history" in resumed.stdout
+
+    repeated = run_cli("--resume-review", thread_id, "--answer", "yes")
+    assert repeated.returncode == 1
+    assert "No pending review" in repeated.stdout
+
+
 class RepeatingModel:
     def __init__(self, name="read_test_run"):
         self.name = name

@@ -19,6 +19,9 @@ def main() -> None:
     mode.add_argument("--graph", action="store_true", help="Run the LangGraph investigation.")
     mode.add_argument("--tools", action="store_true", help="Run a scripted evidence-tool demonstration.")
     mode.add_argument("--simulate", action="store_true", help="Run the model/tool loop with a scripted model.")
+    mode.add_argument("--save-review", action="store_true", help="Run the simulation and save the review to disk.")
+    mode.add_argument("--resume-review", metavar="ID", help="Resume a review saved on disk.")
+    parser.add_argument("--answer", choices=("yes", "no", "unsure"), help="Human answer for --resume-review.")
     parser.add_argument("--review", action="store_true", help="Ask for human input after a completed threshold comparison.")
     parser.add_argument("--trace", action="store_true", help="Print complete graph state snapshots.")
     parser.add_argument("--before-run", default="R-104", help="Earlier test run ID.")
@@ -32,6 +35,14 @@ def main() -> None:
         parser.error("--trace requires --graph or --simulate")
     if args.max_tool_calls < 0 or args.max_model_turns < 1:
         parser.error("--max-tool-calls must be nonnegative; --max-model-turns must be positive")
+    if (args.resume_review is not None) != (args.answer is not None):
+        parser.error("--resume-review and --answer must be used together")
+    if args.resume_review == "":
+        parser.error("Investigation ID must not be empty")
+    if args.save_review or args.resume_review is not None:
+        from sensorassist.saved_review import run_saved_review
+
+        raise SystemExit(run_saved_review(args))
     if args.simulate:
         from langchain_core.messages import HumanMessage
         from langgraph.types import Command
