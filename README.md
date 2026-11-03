@@ -102,6 +102,12 @@ The loop stops with `tool_call_limit` and preserves a result for every requested
 
 See [Section 5 explained](docs/section-05.md). The model is injected through an interface so a bound live model can be added later; no real-provider behavior has been verified yet.
 
+### Section 6 report
+
+The simulation now ends at a `report` node that turns tool results into findings, evidence references, missing information, and a next check. Run `--simulate` for the full report, add `--after-run R-999` for missing evidence, or add `--max-tool-calls 1` to see the partial report after a budget stop. Add `--trace` to see the structured report in the final state snapshot.
+
+A completed report records retrieved evidence. The next check still asks whether the threshold change was intentional.
+
 ## The problem
 
 A failed test can leave evidence spread across run results, configuration files, and behavior specifications. SensorAssist will gather that evidence, explain what it supports, and identify what still needs investigation.

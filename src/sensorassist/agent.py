@@ -1,7 +1,7 @@
 """Section 5: coordinate model requests and real tools through message state.
 
 Read AgentState first, then the node functions inside build_agent, then the
-edges at the bottom. The normal path is model -> tools -> model -> ... -> END.
+edges at the bottom. The normal path is model -> tools -> model -> ... -> report -> END.
 The model is currently ScriptedModel; this module supplies the orchestration.
 """
 
@@ -15,6 +15,7 @@ from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 
+from sensorassist.reporting import InvestigationReport, build_report
 from sensorassist.tools import build_tools
 
 
@@ -42,6 +43,7 @@ class AgentState(TypedDict, total=False):
     # "completed" means the model finished, not that it proved a diagnosis.
     status: Literal["running", "completed", "stopped"]
     stop_reason: str
+    report: InvestigationReport
 
 
 def build_agent(
@@ -62,7 +64,7 @@ def build_agent(
         raise ValueError("Tool budget must be nonnegative and model-turn budget positive.")
     # ToolNode is a reusable LangGraph component. It dispatches a tool by name,
     # validates its arguments, and constructs a ToolMessage carrying the result.
-    executor = ToolNode(list(build_tools(data_dir).values()))
+    executor = ToolNode(list(build_tools(data_dir).values()), handle_tool_errors=(OSError, ValueError))
 
     def model_step(state: AgentState) -> dict:
         """Read the history and append one model response to message state."""
@@ -123,17 +125,23 @@ def build_agent(
             return "stop"
         return "model"
 
+    def report(state: AgentState) -> dict:
+        """Read the tool history and write the report into the backpack."""
+        return {"report": build_report(state["messages"], state.get("stop_reason", ""))}
+
     # Register the work (nodes), then declare which step can run next (edges).
     builder = StateGraph(AgentState)
     builder.add_node("model", model_step)
     builder.add_node("tools", execute_tools)
     builder.add_node("stop", stop)
+    builder.add_node("report", report)
     builder.add_edge(START, "model")
     # Only one outgoing route is chosen by each of these conditional routers.
-    builder.add_conditional_edges("model", after_model, {"tools": "tools", "done": END})
+    builder.add_conditional_edges("model", after_model, {"tools": "tools", "done": "report"})
     builder.add_conditional_edges("tools", after_tools, {"model": "model", "stop": "stop"})
-    builder.add_edge("stop", END)
+    builder.add_edge("stop", "report")
+    builder.add_edge("report", END)
     # compile prepares the runnable graph. The recursion limit is an additional
     # cap on graph super-steps, not Python recursion or a wall-clock timeout.
-    # Each model turn can use a model and tool step; leave room for stopping.
+    # Each model turn can use a model and tool step; leave room for stop and report.
     return builder.compile().with_config({"recursion_limit": 2 * max_model_turns + 4})

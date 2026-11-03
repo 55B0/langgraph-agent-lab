@@ -51,6 +51,13 @@ def test_simulation_uses_real_results_and_accumulates_messages_without_network(m
     assert json.loads(tools[1].content)["run"]["outcome"] == "failed"
     assert "0.4 -> 0.7" in result["messages"][-1].content
     assert "SIMULATION" in result["messages"][-1].content
+    report = result["report"]
+    assert report["status"] == "completed"
+    assert report["missing_information"] == []
+    assert {
+        "text": "Configuration change: detection_threshold: 0.4 -> 0.7.",
+        "evidence": ["CONFIG-CFG-104", "CONFIG-CFG-105"],
+    } in report["findings"]
     assert_protocol_complete(result["messages"])
 
 
@@ -72,6 +79,20 @@ def test_missing_run_returns_an_incomplete_summary_without_comparing():
     assert result["tool_calls_used"] == 2
     assert "Incomplete evidence" in result["messages"][-1].content
     assert "runs/R-999.json" in result["messages"][-1].content
+    assert result["report"]["status"] == "incomplete"
+    assert result["report"]["missing_information"] == ["runs/R-999.json"]
+    assert result["report"]["evidence"] == ["RUN-R-104"]
+    assert_protocol_complete(result["messages"])
+
+
+def test_malformed_config_reports_tool_error_and_keeps_run_evidence(tmp_path):
+    copied_data = tmp_path / "data"
+    shutil.copytree(DATA_DIR, copied_data)
+    (copied_data / "configs" / "CFG-105.json").write_text("{", encoding="utf-8")
+    result = build_agent(copied_data, ScriptedModel()).invoke(request())
+    assert result["report"]["status"] == "tool_error"
+    assert result["report"]["evidence"] == ["RUN-R-104", "RUN-R-105"]
+    assert "compare_configs" in result["report"]["next_check"]
     assert_protocol_complete(result["messages"])
 
 
@@ -89,6 +110,8 @@ class RepeatingModel:
 def test_tool_limit_stops_a_repeating_model_and_answers_rejected_calls():
     result = build_agent(DATA_DIR, RepeatingModel(), max_tool_calls=1).invoke(request())
     assert result["status"] == "stopped" and result["stop_reason"] == "tool_call_limit"
+    assert result["report"]["status"] == "stopped"
+    assert result["report"]["evidence"] == ["RUN-R-104"]
     assert result["tool_calls_used"] == 1
     tools = [message for message in result["messages"] if isinstance(message, ToolMessage)]
     assert len(tools) == 2

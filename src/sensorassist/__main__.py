@@ -35,8 +35,8 @@ def main() -> None:
         from sensorassist.agent import build_agent
         from sensorassist.simulation import ScriptedModel
 
-        print("SensorAssist | Section 5: SIMULATION (scripted model; no LLM or API key)")
-        print("START -> model -> tools -> model ... -> END\n")
+        print("SensorAssist | Section 6: SIMULATION (scripted model; no LLM or API key)")
+        print("START -> model -> tools -> model ... -> report -> END\n")
         # The script gets the scenario IDs explicitly; it does not understand
         # the natural-language request like a real LLM would.
         model = ScriptedModel(args.before_run, args.after_run)
@@ -68,9 +68,14 @@ def main() -> None:
                 if args.trace:
                     snapshot = {**final_state, "messages": [message.model_dump() for message in final_state["messages"]]}
                     print(json.dumps(snapshot, indent=2))
-        print(f"\nStatus: {final_state['status']}")
+        report = final_state["report"]
+        print(f"\nStatus: {report['status']}")
         print(f"Model turns: {final_state['model_turns']}; tool calls executed: {final_state.get('tool_calls_used', 0)}")
-        print(final_state["messages"][-1].content)
+        for finding in report["findings"]:
+            print(f"- {finding['text']} [{', '.join(finding['evidence'])}]")
+        for item in report["missing_information"]:
+            print(f"- Missing: {item}")
+        print(f"Next check: {report['next_check']}")
         return
     if args.tools:
         from sensorassist.tools import build_tools

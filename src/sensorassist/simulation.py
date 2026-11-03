@@ -24,7 +24,10 @@ class ScriptedModel:
         # Read observations from ToolMessages, not by loading files ourselves.
         # The count determines our position in the recipe. Keeping that count
         # in history avoids a hidden counter leaking between independent runs.
-        results = [json.loads(message.content) for message in messages if isinstance(message, ToolMessage)]
+        observations = [message for message in messages if isinstance(message, ToolMessage)]
+        if observations and observations[-1].status == "error":
+            return AIMessage(content="[SIMULATION] An evidence tool failed.")
+        results = [json.loads(message.content) for message in observations]
         step = len(results)
         if results and results[-1]["status"] in ("not_found", "invalid_argument"):
             # This is a final response: no tool_calls field means the graph ends.
