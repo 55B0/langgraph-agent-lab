@@ -116,6 +116,20 @@ A completed report records retrieved evidence. The next check still asks whether
 
 When a completed report shows a threshold change, the graph displays the findings and pauses for `yes`, `no`, or `unsure`. Your answer determines the next check. The checkpoint lives in memory for this run, so answer in the same terminal session.
 
+To practice resuming after a restart, install the dependencies from `requirements.lock`, then run this from the project folder:
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --save-review
+```
+
+Copy the printed investigation ID. Open a new terminal in the same project folder and replace `YOUR_ID` below with that ID.
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --resume-review YOUR_ID --answer unsure
+```
+
+The local database lives at `.checkpoints/investigations.sqlite`. The ID selects the saved state, and LangGraph resumes the review using the evidence already gathered.
+
 ## The problem
 
 A failed test can leave evidence spread across run results, configuration files, and behavior specifications. SensorAssist will gather that evidence, explain what it supports, and identify what still needs investigation.
