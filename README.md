@@ -4,7 +4,13 @@ Learning LangGraph by building **SensorAssist**, an agent that investigates fict
 
 **Status:** Evidence tools, conditional routing, structured reports, human review, SQLite checkpoints, and an offline scorecard are implemented. The model/tool loop uses a clearly labeled scripted model. Real LLM integration is the next agent capability.
 
-The [log investigation case](docs/log-investigation.md) adds a controller count failure with raw event logs, a configuration difference, and two interface specifications. The evidence tools support manual investigation of this case in preparation for live model integration.
+The [log investigation case](docs/log-investigation.md) adds a controller count failure with raw event logs and two interface specifications. Its guided diagnosis checks each system layer, requests a missing controller configuration, and resumes from a saved checkpoint when that file is supplied.
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --diagnose R-207 --data-dir data/cases/controller-mismatch
+# Replace YOUR_ID with the diagnosis ID printed above.
+& .\.venv\Scripts\python.exe -m sensorassist --resume-diagnosis YOUR_ID --controller-config examples/controller-config/CTRL-201.json
+```
 
 ## Run Section 1
 

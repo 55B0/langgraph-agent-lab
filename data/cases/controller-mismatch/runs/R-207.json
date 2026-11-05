@@ -4,6 +4,7 @@
   "synthetic": true,
   "sensor_id": "S-201",
   "controller_id": "C-201",
+  "controller_config_id": "CTRL-201",
   "firmware_version": "fictional-2.0.0",
   "test_id": "controller-object-count",
   "config_id": "CFG-207",
