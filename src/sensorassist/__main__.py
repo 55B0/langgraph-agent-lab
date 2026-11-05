@@ -24,6 +24,9 @@ def main() -> None:
     mode.add_argument("--simulate", action="store_true", help="Run the model/tool loop with a scripted model.")
     mode.add_argument("--save-review", action="store_true", help="Run the simulation and save the review to disk.")
     mode.add_argument("--resume-review", metavar="ID", help="Resume a review saved on disk.")
+    mode.add_argument("--diagnose", metavar="RUN_ID", help="Investigate the fictional sensor/controller interface.")
+    mode.add_argument("--resume-diagnosis", metavar="ID", help="Resume a diagnosis waiting for evidence.")
+    parser.add_argument("--controller-config", type=Path, help="JSON controller configuration for --resume-diagnosis.")
     parser.add_argument("--answer", choices=("yes", "no", "unsure"), help="Human answer for --resume-review.")
     parser.add_argument("--review", action="store_true", help="Ask for human input after a completed threshold comparison.")
     parser.add_argument("--trace", action="store_true", help="Print complete graph state snapshots.")
@@ -34,14 +37,22 @@ def main() -> None:
     args = parser.parse_args()
     if args.review and not args.simulate:
         parser.error("--review requires --simulate")
-    if args.trace and not (args.graph or args.simulate):
-        parser.error("--trace requires --graph or --simulate")
+    if args.trace and not (args.graph or args.simulate or args.diagnose or args.resume_diagnosis):
+        parser.error("--trace requires a graph execution mode")
     if args.max_tool_calls < 0 or args.max_model_turns < 1:
         parser.error("--max-tool-calls must be nonnegative; --max-model-turns must be positive")
     if (args.resume_review is not None) != (args.answer is not None):
         parser.error("--resume-review and --answer must be used together")
     if args.resume_review == "":
         parser.error("Investigation ID must not be empty")
+    if args.diagnose == "" or args.resume_diagnosis == "":
+        parser.error("Run and diagnosis IDs must not be empty")
+    if (args.resume_diagnosis is not None) != (args.controller_config is not None):
+        parser.error("--resume-diagnosis and --controller-config must be used together")
+    if args.diagnose is not None or args.resume_diagnosis is not None:
+        from sensorassist.guided_cli import run_guided_diagnosis
+
+        raise SystemExit(run_guided_diagnosis(args))
     if args.evaluate:
         from sensorassist.evaluation import run_scorecard
 

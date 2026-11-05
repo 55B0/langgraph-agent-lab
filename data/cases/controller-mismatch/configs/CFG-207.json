@@ -5,6 +5,5 @@
   "sensor_id": "S-201",
   "controller_id": "C-201",
   "detection_threshold": 0.4,
-  "sensor_output_polarity": "active_low",
-  "controller_active_level": "HIGH"
+  "sensor_output_polarity": "active_low"
 }

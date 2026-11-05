@@ -24,19 +24,49 @@ The log tool reads the file and returns exact line numbers and a source ID. It a
 
 - Both logs record OBJECT_PRESENT at line 3.
 - R-206 records HIGH output and a controller count of 1 at lines 4-5. R-207 records LOW output and a count of 0.
-- The sensor output polarity changed from active_high to active_low. The controller's active level stayed HIGH.
+- The sensor output polarity changed from active_high to active_low. The controller's active level is a separate evidence record, requested by the guided workflow.
 - SPEC-OUTPUT-V1 explains that active_low encodes OBJECT_PRESENT as LOW. SPEC-CONTROLLER-V1 explains that the controller counts only its configured active level.
 
-Together, these artifacts support an interface mismatch as the explanation within this fictional case. The startup LINK_RECOVERED warning appears before both tests, and the controller specification states that input sampling proceeds normally afterward.
+After supplying the example controller record, its HIGH active level supports an interface mismatch as the explanation within this fictional case. The startup LINK_RECOVERED warning appears before both tests, and the controller specification states that input sampling proceeds normally afterward.
 
 The intended interface convention remains unknown. The next question for the human is whether the controller and sensor should use a HIGH or LOW active level. Either side could require a configuration correction depending on that answer.
 
-## Next implementation
+## Guided diagnosis
 
-These commands expose the evidence for manual inspection. The current ScriptedModel follows the original threshold recipe and does not choose a log investigation strategy. The next step is to connect a real tool-calling model to the existing graph and let it choose between reading runs, reading log pages, comparing configurations, and searching specifications.
+The guided graph implements explicit rules for this single-object test. Each check determines which layer to inspect next.
 
-Use this question for the first live test:
+```mermaid
+flowchart TD
+    L[Load evidence] --> S[Check sensor decision]
+    S -->|Object present| O[Check output]
+    S -->|Absent or contradictory| E[Finish with next check]
+    O -->|Expected output| C[Check connection]
+    O -->|Unexpected output| E
+    C -->|Levels differ| E
+    C -->|Levels agree, configuration missing| H[Request controller configuration]
+    C -->|Configuration available| I[Check interpretation]
+    H -->|Human supplies file| I
+    I --> E
+```
 
-> Why did R-207 count zero objects when R-206 counted one? Investigate the records, logs, and relevant specifications. Cite the evidence and identify what you still need to ask a human.
+Start the investigation:
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --diagnose R-207 --data-dir data/cases/controller-mismatch
+```
+
+It checks the sensor, output, and connection, then saves a checkpoint with status `awaiting_evidence`. Copy the diagnosis ID and use it in a new terminal from the same project folder:
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --resume-diagnosis YOUR_ID --controller-config examples/controller-config/CTRL-201.json
+```
+
+The example controller record is outside the case's source folder so it must be explicitly supplied. The resume command validates its controller ID, configuration ID, source ID, synthetic label, and active level before answering the saved request. Invalid files leave the request pending.
+
+The resumed graph uses saved evidence and adds the controller record. With the example's HIGH active level it returns `explained`. A LOW active level would contradict the logged zero count and return `unresolved`. Earlier failed checks finish with their own next step, before requesting this file.
+
+The checkpoint database lives at `.checkpoints/diagnoses.sqlite`. Add `--trace` to inspect the saved notebook. A controller record already present at `controller-configs/CTRL-201.json` within the chosen data directory is used directly.
+
+This workflow supports the known fictional single-object test, one event of each required kind, and logs up to 500 lines. Missing files produce `incomplete`; inconsistent or unsupported evidence produces `unresolved`. A future model could choose tools for unfamiliar questions; the existing `--simulate` mode still follows its threshold recipe.
 
 The fixed `--graph` assessment implements only the original steady-state detection specification. This case uses a different controller count test.
