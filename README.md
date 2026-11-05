@@ -2,7 +2,9 @@
 
 Learning LangGraph by building **SensorAssist**, an agent that investigates fictional sensor software test failures.
 
-**Status:** Sections 1-4 and the offline part of Section 5 are implemented: evidence tools, conditional routing, and a bounded model/tool loop using a clearly labeled scripted model. A real LLM connection and persistence are future work.
+**Status:** Evidence tools, conditional routing, structured reports, human review, SQLite checkpoints, and an offline scorecard are implemented. The model/tool loop uses a clearly labeled scripted model. Real LLM integration is the next agent capability.
+
+The [log investigation case](docs/log-investigation.md) adds a controller count failure with raw event logs, a configuration difference, and two interface specifications. The evidence tools support manual investigation of this case in preparation for live model integration.
 
 ## Run Section 1
 
@@ -67,6 +69,7 @@ The demo reads both test runs, compares their configurations, and searches the f
 | Tool | Input | Output |
 |---|---|---|
 | `read_test_run` | Run ID, such as `R-105` | Recorded observations, configuration reference, and source ID |
+| `read_event_log` | Run ID and optional page arguments | Raw log lines with exact line numbers and a source ID |
 | `compare_configs` | Two configuration IDs | Changed fields and both source IDs |
 | `search_spec` | Keyword query | Up to three matching passages with source IDs and line numbers |
 

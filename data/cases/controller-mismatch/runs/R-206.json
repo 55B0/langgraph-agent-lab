@@ -1,0 +1,15 @@
+{
+  "source_id": "RUN-R-206",
+  "run_id": "R-206",
+  "synthetic": true,
+  "sensor_id": "S-201",
+  "controller_id": "C-201",
+  "firmware_version": "fictional-2.0.0",
+  "test_id": "controller-object-count",
+  "config_id": "CFG-206",
+  "observation": {
+    "expected_object_count": 1,
+    "actual_object_count": 1
+  },
+  "outcome": "passed"
+}
