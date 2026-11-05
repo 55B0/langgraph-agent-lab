@@ -1,243 +1,167 @@
-# LangGraph Agent Lab
+# SensorAssist — LangGraph Agent Lab
 
-Learning LangGraph by building **SensorAssist**, an agent that investigates fictional sensor software test failures.
+SensorAssist investigates fictional sensor/controller failures through explicit LangGraph workflows. It checks evidence, pauses when information is missing, and resumes the same investigation when that information arrives.
 
-**Status:** Evidence tools, conditional routing, structured reports, human review, SQLite checkpoints, and an offline scorecard are implemented. The model/tool loop uses a clearly labeled scripted model. Real LLM integration is the next agent capability.
+The project demonstrates state, conditional routing, evidence tools, human input, SQLite checkpoints, and evaluation. Current execution uses diagnostic rules or a scripted model substitute. Live LLM integration remains optional future work.
 
-The [log investigation case](docs/log-investigation.md) adds a controller count failure with raw event logs and two interface specifications. Its guided diagnosis checks each system layer, requests a missing controller configuration, and resumes from a saved checkpoint when that file is supplied.
+All sensor records and specifications are synthetic. This is an independent learning project.
 
-```powershell
-& .\.venv\Scripts\python.exe -m sensorassist --diagnose R-207 --data-dir data/cases/controller-mismatch
-# Replace YOUR_ID with the diagnosis ID printed above.
-& .\.venv\Scripts\python.exe -m sensorassist --resume-diagnosis YOUR_ID --controller-config examples/controller-config/CTRL-201.json
-```
-
-## Run Section 1
-
-Use Python 3.11 and run these PowerShell commands from the repository root:
-
-```powershell
-py -3.11 -m venv .venv
-& .\.venv\Scripts\python.exe -m pip install -r requirements.lock
-& .\.venv\Scripts\python.exe -m pip install --no-deps -e .
-& .\.venv\Scripts\python.exe -m sensorassist
-& .\.venv\Scripts\python.exe -m pytest -q
-```
-
-The lock file records the resolved development dependencies from the verified Windows/Python 3.11 environment. To resolve dependencies again instead, install with `pip install -e '.[dev]'` inside the virtual environment and review the resulting version changes.
-
-The inspector prints the recorded values and rule results for R-104 and R-105. This default mode does not call an LLM or execute a graph. See [Section 1 explained](docs/section-01.md) for the evidence.
-
-## Run the graph (Sections 2-3)
-
-After setup, run the LangGraph workflow from the repository root:
-
-```powershell
-& .\.venv\Scripts\python.exe -m sensorassist --graph
-```
-
-It prints each node's updated fields, the fields retained in shared state, and a final report with evidence references. Add `--trace` to print the complete state snapshots:
-
-```powershell
-& .\.venv\Scripts\python.exe -m sensorassist --graph --trace
-```
-
-To demonstrate the missing-evidence branch without changing any files, request an unknown run:
-
-```powershell
-& .\.venv\Scripts\python.exe -m sensorassist --graph --after-run R-999
-```
-
-The normal case returns `explained`; the unknown run returns `incomplete` and names the missing file. If the evidence exists but does not support the explanation, assessment returns `unresolved`.
-
-The implemented graph is a scripted workflow with a conditional edge:
-
-```mermaid
-flowchart LR
-    S([START]) --> L[load_case]
-    L -->|Evidence complete| A[assess_case]
-    L -->|Evidence missing| M[missing_data]
-    A --> R[report]
-    R --> E([END])
-    M --> E
-```
-
-See [Section 2 explained](docs/section-02.md) for state and nodes, and [Section 3 explained](docs/section-03.md) for conditional routing. The graph applies the known fictional rule in code; it does not interpret the specification with an LLM.
-
-## Run the tools (Section 4)
-
-```powershell
-& .\.venv\Scripts\python.exe -m sensorassist --tools
-```
-
-The demo reads both test runs, compares their configurations, and searches the fictional specification. Every call prints the tool name, input arguments, and returned evidence. The calls are scripted and use no model or API key.
-
-| Tool | Input | Output |
-|---|---|---|
-| `read_test_run` | Run ID, such as `R-105` | Recorded observations, configuration reference, and source ID |
-| `read_event_log` | Run ID and optional page arguments | Raw log lines with exact line numbers and a source ID |
-| `compare_configs` | Two configuration IDs | Changed fields and both source IDs |
-| `search_spec` | Keyword query | Up to three matching passages with source IDs and line numbers |
-
-The tools accept task arguments rather than arbitrary filesystem paths. Missing records and no-match searches have explicit results. See [Section 4 explained](docs/section-04.md) for the contracts, examples, and current limits.
-
-The Section 3 graph remains a scripted workflow using its existing loader. The offline Section 5 loop below calls these tool objects through a tool execution node.
-
-## Run the offline model/tool loop (Section 5)
-
-```powershell
-& .\.venv\Scripts\python.exe -m sensorassist --simulate
-```
-
-This runs real LangGraph orchestration and real local tools with a **scripted model substitute**. It uses no LLM, API key, or provider connection. The recipe requests two runs, compares their referenced configurations, searches the specification, and summarizes the returned evidence. Tool requests are predefined; the simulation does not understand arbitrary natural-language questions.
-
-```mermaid
-flowchart LR
-    S([START]) --> M[model]
-    M -->|Tool requests| T[tools]
-    T -->|Continue| M
-    T -->|Limit reached| X[stop]
-    M -->|Final response| E([END])
-    X --> E
-```
-
-Requests and results accumulate in message state with matching tool-call IDs. The default reference case uses five model turns and four tool calls. To demonstrate stopping, run:
-
-```powershell
-& .\.venv\Scripts\python.exe -m sensorassist --simulate --max-tool-calls 1
-```
-
-The loop stops with `tool_call_limit` and preserves a result for every requested call, including rejected calls. `--max-model-turns` limits model invocations. Add `--trace` for full message-state snapshots, or `--after-run R-999` for incomplete evidence.
-
-See [Section 5 explained](docs/section-05.md). The model is injected through an interface so a bound live model can be added later; no real-provider behavior has been verified yet.
-
-### Section 6 report
-
-The simulation now ends at a `report` node that turns tool results into findings, evidence references, missing information, and a next check. Run `--simulate` for the full report, add `--after-run R-999` for missing evidence, or add `--max-tool-calls 1` to see the partial report after a budget stop. Add `--trace` to see the structured report in the final state snapshot.
-
-A completed report records retrieved evidence. The next check still asks whether the threshold change was intentional.
-
-### Section 7 human review
-
-```powershell
-& .\.venv\Scripts\python.exe -m sensorassist --simulate --review
-```
-
-When a completed report shows a threshold change, the graph displays the findings and pauses for `yes`, `no`, or `unsure`. Your answer determines the next check. The checkpoint lives in memory for this run, so answer in the same terminal session.
-
-To practice resuming after a restart, install the dependencies from `requirements.lock`, then run this from the project folder:
-
-```powershell
-& .\.venv\Scripts\python.exe -m sensorassist --save-review
-```
-
-Copy the printed investigation ID. Open a new terminal in the same project folder and replace `YOUR_ID` below with that ID.
-
-```powershell
-& .\.venv\Scripts\python.exe -m sensorassist --resume-review YOUR_ID --answer unsure
-```
-
-The local database lives at `.checkpoints/investigations.sqlite`. The ID selects the saved state, and LangGraph resumes the review using the evidence already gathered.
-
-### Section 8 offline scorecard
-
-```powershell
-& .\.venv\Scripts\python.exe -m sensorassist --evaluate
-```
-
-| Case | Fixed workflow | Scripted tool loop |
-| --- | --- | --- |
-| Threshold change | Explains the detection change with the fictional rule | Reports the threshold change with both configuration references |
-| Missing run | Names the missing file and reports incomplete evidence | Names the missing file, reports incomplete evidence, and skips review |
-| One-call limit | — | Stops and keeps the first run as evidence |
-
-The bundled fixtures pass all five checks. A failed check makes the command exit with code 1. This scorecard compares behavior on known fictional cases. Evaluating a live model or generalizing to new cases would require a separate evaluation.
+[Try it](#try-the-guided-diagnosis) · [Architecture](#how-it-works) · [Verification](#verification) · [Learning guide](docs/learning-plan.md)
 
 ## The problem
 
-A failed test can leave evidence spread across run results, configuration files, and behavior specifications. SensorAssist will gather that evidence, explain what it supports, and identify what still needs investigation.
+A sensor reports that it saw an object, but the controller counts zero. Explaining that result requires connecting a test record, event log, sensor configuration, controller configuration, and two interface specifications.
 
-The project is a practical way to learn state, nodes, conditional edges, tool calling, checkpointing, human input, and agent evaluation through small, inspectable changes.
+In the example, the sensor sends LOW for “object present.” The controller's interpretation becomes known when the user supplies its configuration. That record says the controller expects HIGH, supporting an interface mismatch as the explanation. The workflow asks which convention was intended before recommending a change.
 
-## First investigation
+## Try the guided diagnosis
 
-> Object detection passed in run R-104 but failed in R-105. What explains the change?
+### Set up once
 
-| Recorded value | R-104 | R-105 |
-|---|---:|---:|
-| Input signal | 0.55 | 0.55 |
-| Detection threshold | 0.40 | 0.70 |
-| Expected detection | true | true |
-| Actual detection | true | false |
+The verified development environment is Windows, PowerShell, and Python 3.11. Git is needed to clone the repository.
 
-The fictional specification defines detection as `signal >= threshold`. The changed threshold explains the recorded output. The available artifacts do not establish whether that configuration change was intentional, so the next step is to confirm intent before recommending a configuration or test change.
+```powershell
+git clone https://github.com/55B0/langgraph-agent-lab.git
+cd langgraph-agent-lab
+py -3.11 -m venv .venv
+& .\.venv\Scripts\python.exe -m pip install -r requirements.lock
+& .\.venv\Scripts\python.exe -m pip install --no-deps -e .
+```
 
-This case gives us a conclusion we can verify and a clear boundary between observations, explanations, and missing information.
+For an existing checkout, open PowerShell in its project folder, where `pyproject.toml`, `data`, and `src` are located. Run all following commands from that folder. The lock file records the verified dependency versions.
 
-## Intended behavior
+### Start and pause
 
-SensorAssist will:
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --diagnose R-207 --data-dir data/cases/controller-mismatch
+```
 
-- Read saved test runs and compare the configurations associated with them.
-- Retrieve relevant passages from a small local specification.
-- Produce a report with evidence references and unresolved questions.
-- Stop within an enforced investigation budget.
-- Pause for human input when necessary and resume the same investigation.
+The output shows the executed nodes, followed by this pause:
 
-All sensor behavior, runs, identifiers, and specifications are synthetic. This is an independent learning project with no affiliation to SICK. Its outputs are demonstrations, not official product guidance.
+```text
+Status: awaiting_evidence
+Next check: Supply controller configuration CTRL-201.
+Diagnosis ID: <generated ID>
+Node: request_controller (paused)
+```
 
-## Planned architecture
+The saved evidence establishes that the sensor detected the object, produced LOW, and the controller received LOW. The controller configuration is a separate record that must be supplied explicitly.
 
-The current implementation is the deterministic workflow above. The following diagram shows a future version with model-selected tools and human input within an explicit LangGraph `StateGraph`.
+### Supply the missing evidence
+
+Copy the printed diagnosis ID. You can close PowerShell and reopen it in the same project folder. Replace `YOUR_ID` with that ID:
+
+```powershell
+& .\.venv\Scripts\python.exe -m sensorassist --resume-diagnosis YOUR_ID --controller-config examples/controller-config/CTRL-201.json
+```
+
+The resumed run executes `request_controller` and `check_interpretation`, using the earlier evidence saved in SQLite. Its final output includes:
+
+```text
+Status: explained
+Next check: The sensor output and controller active level use different conventions. Confirm the intended HIGH/LOW convention with the configuration owner.
+```
+
+Add `--trace` to either command to inspect the complete state. The [case walkthrough](docs/log-investigation.md) explains the evidence references and alternative outcomes.
+
+## How it works
 
 ```mermaid
 flowchart TD
-    S([Start]) --> A[Choose next investigation step]
-    A -->|Request evidence| T[Execute tool]
-    T --> A
-    A -->|Need human input| H[Pause and collect input]
-    H -->|Resume| A
-    A -->|Finish or reach budget| R[Produce report]
-    R --> E([End])
+    S([START]) --> L[Load evidence]
+    L -->|Usable evidence| A[Check sensor decision]
+    L -->|Missing or inconsistent| E([END])
+    A -->|Object present| O[Check output]
+    A -->|Absent or contradictory| E
+    O -->|Expected output| C[Check connection]
+    O -->|Unexpected output| E
+    C -->|Levels differ| E
+    C -->|Levels agree, configuration missing| H[Request controller configuration]
+    C -->|Levels agree, configuration available| I[Check interpretation]
+    H -->|Pause, supply file, resume| I
+    I --> E
 ```
 
-The model will choose evidence requests. Application code will validate requests and enforce stopping rules. Structured state and execution updates will make the flow inspectable.
+Node functions perform the checks. Conditional edges select the next step from their results. State retains the evidence and accumulated checks. A SQLite checkpointer preserves the investigation across process restarts.
 
-## Build and learning roadmap
+| Result | Example | Next step |
+| --- | --- | --- |
+| `awaiting_evidence` | Controller configuration is missing | Save progress and request the file |
+| `explained` | Sensor sends LOW while controller expects HIGH | Confirm the intended interface convention |
+| `unresolved` | Supplied settings contradict the recorded count | Reconcile the conflicting evidence |
+| `needs_check` | Controller input differs from sensor output | Investigate wiring and input assignment |
+| `incomplete` | A required run, log, or specification is missing | Supply the identified evidence |
+| `consistent` | All checked layers agree in the passing case | Finish with the consistent result |
 
-Estimates describe guided learning time, including hands-on implementation, experiments, explanation, and focused checks. Automated setup can be delegated. These are planning estimates, not measured durations.
+The supplied controller file is validated before resuming. A wrong controller ID or invalid file leaves the request pending.
 
-| Section | Main topic | Approximate time |
-|---|---|---:|
-| 1 | Local setup and one fictional case | 1-1.5 hours |
-| 2 | State, nodes, and a first executable graph | 1-1.5 hours |
-| 3 | Conditional edges and incomplete evidence | 45-75 minutes |
-| 4 | Three evidence tools and their contracts | 1-1.5 hours |
-| 5 | Model/tool loop: simulation first, optional live LLM later | 1.5-2.5 hours |
-| 6 | Structured reports, failures, and stopping | 1-2 hours |
-| 7 | Checkpointing, human input, and resume | 1.5-2.5 hours |
-| 8 | Evaluation, documentation, and demonstration | 2-3 hours |
+## Other learning workflows
 
-Allow approximately **10-16 hours of focused work**, or **12-20 hours including a setup and debugging buffer**. Re-estimate after the first two sections.
+| Mode | Purpose |
+| --- | --- |
+| No flag | Inspect the original R-104/R-105 threshold records |
+| `--graph` | Run fixed assessment with conditional missing-data handling |
+| `--tools` | Read runs, compare configurations, and search specifications |
+| `--read-log RUN_ID` | Read raw log lines with source references |
+| `--simulate` | Run a bounded scripted model/tool loop and structured report |
+| `--simulate --review` | Ask whether a threshold change was intentional |
+| `--save-review` | Save that intent question to SQLite |
+| `--resume-review ID --answer unsure` | Resume with `yes`, `no`, or `unsure` |
+| `--evaluate` | Run the original workflows' five-check scorecard |
 
-See the [section-by-section learning plan](docs/learning-plan.md) for tasks, experiments, and completion criteria. Each section ends with a working result and a short explanation of what changed.
+The original threshold case uses the default `data` directory. Use `--data-dir data/cases/controller-mismatch` for the controller case's evidence tools. The guided diagnosis uses `--diagnose` and `--resume-diagnosis` as shown above.
 
-## Scope of the first version
+The intent review collects a human decision. The guided diagnosis collects a missing evidence file. Both use interrupts and saved state. Their local databases are ignored by Git:
 
-The target is a local command-line demonstration with saved artifacts, a model/tool loop, and a small evaluation set. Offline simulation is the default learning path; a real tool-calling model is an optional later integration. A frontend, hardware integration, sensor simulator, vector database, and multiple agents are optional future experiments.
+- `.checkpoints/investigations.sqlite` stores threshold reviews.
+- `.checkpoints/diagnoses.sqlite` stores guided diagnoses.
 
-All current modes run without an LLM API key. A future live-model mode will require a provider and, for a hosted API, suitable local credentials. Such credentials must stay outside tracked files.
+The scripted loop follows a predefined tool recipe. Its `completed` status means evidence gathering finished. An `explained` result comes from the explicit diagnostic rules in the fixed or guided workflow.
 
-## How we will assess it
+## Verification
 
-We will check whether reports are supported by retrieved evidence, whether unresolved cases remain unresolved, whether tool usage terminates, and whether paused investigations resume correctly.
+```powershell
+& .\.venv\Scripts\python.exe -m pytest -q
+& .\.venv\Scripts\python.exe -m sensorassist --evaluate
+```
 
-A fixed retrieval workflow will provide a comparison using the same model, source artifacts, and report requirements. Evaluation will include successful cases and missing or conflicting evidence. A small synthetic dataset demonstrates behavior; it does not establish real-world diagnostic accuracy.
+The current version passed **56 local tests** covering evidence retrieval, tool budgets, routing, contradictory records, invalid controller files, and resume in a fresh process using saved evidence.
 
-## References
+The separate scorecard passes **5 checks across 3 original scenarios**—threshold change, missing run, and a one-call tool limit. Guided diagnosis is covered by its integration tests. These results describe the synthetic cases and implemented rules.
 
-- [LangGraph Graph API](https://docs.langchain.com/oss/python/langgraph/graph-api)
-- [LangGraph quickstart](https://docs.langchain.com/oss/python/langgraph/quickstart)
+## Code tour
+
+| File | What to look for |
+| --- | --- |
+| [diagnosis.py](src/sensorassist/diagnosis.py) | `DiagnosisState`, diagnostic checks, `interrupt()`, and conditional edges |
+| [guided_cli.py](src/sensorassist/guided_cli.py) | SQLite persistence, file validation, and `Command(resume=...)` |
+| [tools.py](src/sensorassist/tools.py) | Four evidence tools with log pagination and source references |
+| [agent.py](src/sensorassist/agent.py) | Message state, tool dispatch, budgets, and human intent review |
+| [simulation.py](src/sensorassist/simulation.py) | The scripted model's predefined tool requests |
+| [test_diagnosis.py](tests/test_diagnosis.py) | Branching, conflicting evidence, and restart/resume checks |
+
+## Learning resources
+
+The [learning plan](docs/learning-plan.md) contains the original section goals and approximate guided learning times. The [log investigation walkthrough](docs/log-investigation.md) covers the newer diagnosis exercise.
+
+Earlier lessons explain [the fictional data](docs/section-01.md), [state and nodes](docs/section-02.md), [conditional routing](docs/section-03.md), [evidence tools](docs/section-04.md), and [the scripted model/tool loop](docs/section-05.md).
+
+## Current scope
+
+Implemented features include local evidence retrieval, rule-based diagnosis, structured reports, tool budgets, human input, persistence, and offline evaluation. The guided diagnosis supports the known fictional single-object test, exactly one event of each required kind, and logs up to 500 lines.
+
+Free-form questions, autonomous model-selected tools, and live-model evaluation remain optional future work. Hardware integration and broader log formats require additional implementation and validation. Current modes run without an API key.
+
+## Troubleshooting
+
+- **PowerShell cannot find `.venv\Scripts\python.exe`** — change to the project folder and confirm setup has completed.
+- **No pending evidence request** — use the ID printed by `--diagnose`. A completed diagnosis has already consumed its pending request.
+- **No saved diagnoses** — run from the same project folder used to start the investigation, where `.checkpoints` was created.
+- **Controller configuration was not accepted** — check the requested controller and configuration IDs. Retry the same diagnosis ID with the correct file.
+
+## LangGraph references
+
+- [Graph API](https://docs.langchain.com/oss/python/langgraph/graph-api)
 - [Workflows and agents](https://docs.langchain.com/oss/python/langgraph/workflows-agents)
 - [Persistence](https://docs.langchain.com/oss/python/langgraph/persistence)
 - [Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)
