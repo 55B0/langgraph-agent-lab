@@ -19,6 +19,8 @@ def main() -> None:
     mode.add_argument("--graph", action="store_true", help="Run the LangGraph investigation.")
     mode.add_argument("--evaluate", action="store_true", help="Run the offline workflow scorecard.")
     mode.add_argument("--tools", action="store_true", help="Run a scripted evidence-tool demonstration.")
+    mode.add_argument("--read-log", metavar="RUN_ID", help="Read a run's event log through the evidence tool.")
+    parser.add_argument("--spec-query", default="detection threshold", help="Specification search query for --tools.")
     mode.add_argument("--simulate", action="store_true", help="Run the model/tool loop with a scripted model.")
     mode.add_argument("--save-review", action="store_true", help="Run the simulation and save the review to disk.")
     mode.add_argument("--resume-review", metavar="ID", help="Resume a review saved on disk.")
@@ -48,6 +50,12 @@ def main() -> None:
         from sensorassist.saved_review import run_saved_review
 
         raise SystemExit(run_saved_review(args))
+    if args.read_log is not None:
+        from sensorassist.tools import build_tools
+
+        result = build_tools(args.data_dir)["read_event_log"].invoke({"run_id": args.read_log})
+        print(json.dumps(result, indent=2))
+        raise SystemExit(0 if result["status"] == "found" else 1)
     if args.simulate:
         from langchain_core.messages import HumanMessage
         from langgraph.types import Command
@@ -144,7 +152,7 @@ def main() -> None:
             })
         else:
             print("\nConfiguration comparison skipped: a required run was not found.")
-        call_tool("search_spec", {"query": "detection threshold"})
+        call_tool("search_spec", {"query": args.spec_query})
         return
     if args.graph:
         from sensorassist.graph import build_graph

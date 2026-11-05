@@ -7,6 +7,7 @@ which tool runs next. That choice belongs to the script or a future model.
 
 import json
 import re
+from itertools import islice
 from pathlib import Path
 
 from langchain_core.tools import BaseTool, tool
@@ -52,6 +53,37 @@ def build_tools(data_dir: Path) -> dict[str, BaseTool]:
         if result["status"] != "found":
             return result
         return {"status": "found", "run": result["record"]}
+
+    @tool
+    def read_event_log(run_id: str, start_line: int = 1, max_lines: int = 100) -> dict:
+        """Read a test run's event log with exact source line numbers.
+
+        Use timestamps and messages as evidence alongside configuration and
+        specification tools. Set start_line to read another page when has_more
+        is true. max_lines must be between 1 and 500.
+        """
+        if start_line < 1 or not 1 <= max_lines <= 500:
+            return {"status": "invalid_argument", "message": "Use start_line >= 1 and max_lines between 1 and 500."}
+        # Validate the ID and require an existing run before opening its log.
+        result = read_record("runs", run_id, "R", "run_id")
+        if result["status"] != "found":
+            return result
+        path = source_path("logs", f"{run_id}.log")
+        try:
+            with path.open(encoding="utf-8") as stream:
+                page = list(islice(stream, start_line - 1, start_line + max_lines))
+        except FileNotFoundError:
+            return {"status": "not_found", "missing_evidence": [f"logs/{run_id}.log"]}
+        return {
+            "status": "found",
+            "source_id": f"LOG-{run_id}",
+            "path": f"logs/{run_id}.log",
+            "lines": [
+                {"line_number": number, "text": line.rstrip("\r\n")}
+                for number, line in enumerate(page[:max_lines], start=start_line)
+            ],
+            "has_more": len(page) > max_lines,
+        }
 
     @tool
     def compare_configs(before_config_id: str, after_config_id: str) -> dict:
@@ -134,4 +166,4 @@ def build_tools(data_dir: Path) -> dict[str, BaseTool]:
         matches.sort(key=lambda match: (-len(match["matched_terms"]), match["path"], match["start_line"]))
         return {"status": "found" if matches else "no_matches", "matches": matches[:3]}
 
-    return {item.name: item for item in (read_test_run, compare_configs, search_spec)}
+    return {item.name: item for item in (read_test_run, read_event_log, compare_configs, search_spec)}

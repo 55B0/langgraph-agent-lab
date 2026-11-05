@@ -12,6 +12,55 @@ from sensorassist.tools import build_tools
 
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+LOG_CASE = DATA_DIR / "cases" / "controller-mismatch"
+
+
+def test_event_log_pages_preserve_the_actual_file_and_line_numbers():
+    tool = build_tools(LOG_CASE)["read_event_log"]
+    first = tool.invoke({"run_id": "R-207", "max_lines": 3})
+    second = tool.invoke({"run_id": "R-207", "start_line": 4, "max_lines": 3})
+    assert first["source_id"] == "LOG-R-207"
+    assert first["has_more"] is True
+    assert second["has_more"] is False
+    combined = first["lines"] + second["lines"]
+    source_lines = (LOG_CASE / "logs" / "R-207.log").read_text(encoding="utf-8").splitlines()
+    assert combined == [
+        {"line_number": number, "text": text}
+        for number, text in enumerate(source_lines, start=1)
+    ]
+    assert tool.invoke({"run_id": "R-207", "start_line": 7})["lines"] == []
+
+
+def test_event_log_reports_missing_files_and_rejects_paths():
+    assert build_tools(DATA_DIR)["read_event_log"].invoke({"run_id": "R-104"}) == {
+        "status": "not_found", "missing_evidence": ["logs/R-104.log"],
+    }
+    assert build_tools(LOG_CASE)["read_event_log"].invoke({"run_id": "../R-207"})["status"] == "invalid_argument"
+    assert build_tools(LOG_CASE)["read_event_log"].invoke({"run_id": "R-999"}) == {
+        "status": "not_found", "missing_evidence": ["runs/R-999.json"],
+    }
+    assert build_tools(LOG_CASE)["read_event_log"].invoke({
+        "run_id": "R-207", "start_line": 0,
+    })["status"] == "invalid_argument"
+    assert build_tools(LOG_CASE)["read_event_log"].invoke({
+        "run_id": "R-207", "max_lines": 501,
+    })["status"] == "invalid_argument"
+
+
+def test_log_case_exposes_interface_change_and_both_specifications():
+    tools = build_tools(LOG_CASE)
+    changes = tools["compare_configs"].invoke({
+        "before_config_id": "CFG-206", "after_config_id": "CFG-207",
+    })
+    assert [change["field"] for change in changes["changes"]] == ["sensor_output_polarity"]
+    passages = tools["search_spec"].invoke({"query": "output polarity controller input"})["matches"]
+    assert {passage["source_id"] for passage in passages} == {"SPEC-OUTPUT-V1", "SPEC-CONTROLLER-V1"}
+    result = subprocess.run(
+        [sys.executable, "-m", "sensorassist", "--data-dir", str(LOG_CASE), "--read-log", "R-207"],
+        capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == tools["read_event_log"].invoke({"run_id": "R-207"})
 
 
 def test_read_run_returns_evidence_and_a_configuration_reference():
@@ -91,6 +140,7 @@ def test_tool_schemas_expose_task_arguments_and_not_filesystem_configuration():
     tools = build_tools(DATA_DIR)
     expected = {
         "read_test_run": {"run_id"},
+        "read_event_log": {"run_id", "start_line", "max_lines"},
         "compare_configs": {"before_config_id", "after_config_id"},
         "search_spec": {"query"},
     }

@@ -41,6 +41,15 @@ def build_report(messages: list[AnyMessage], stop_reason: str = "") -> Investiga
         elif message.name == "read_test_run":
             run = result["run"]
             findings.append({"text": f"Run {run['run_id']}: {run['outcome']}.", "evidence": [run["source_id"]]})
+        elif message.name == "read_event_log":
+            lines = result["lines"]
+            if lines:
+                findings.append({
+                    "text": f"Event log passage at lines {lines[0]['line_number']}-{lines[-1]['line_number']}.",
+                    "evidence": [result["source_id"]],
+                })
+            else:
+                missing.append(f"No lines in the requested page of {result['path']}.")
         elif message.name == "compare_configs":
             sources = result["source_ids"]
             evidence.extend(sources)
