@@ -6,6 +6,8 @@ The project demonstrates state, conditional routing, evidence tools, human input
 
 All sensor records and specifications are synthetic. This is an independent learning project.
 
+You can also find the second project repository on GitHub at [langgraph-agent-lab2](https://github.com/55B0/langgraph-agent-lab2).
+
 [Try it](#try-the-guided-diagnosis) · [Architecture](#how-it-works) · [Verification](#verification) · [Learning guide](docs/learning-plan.md)
 
 ## The problem
